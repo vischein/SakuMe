@@ -80,7 +80,7 @@ fun AccountsScreen(
     accounts: List<AccountEntity>,
     tx: List<TransactionEntity>,
     onAdd: () -> Unit,
-    onTransfer: () -> Unit,
+    onTransfer: () -> Unit = {},
     onAddTx: () -> Unit,
     onAccountClick: (AccountEntity) -> Unit = {},
     onCash: () -> Unit = {},
@@ -142,8 +142,15 @@ fun AccountsScreen(
                     }
                 }
                 Box {
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "Menu", tint = Ink)
+                    Box(
+                                Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(Ink)
+                                .clickable(onClick = { menuOpen = true }),
+                                contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "Menu", tint = Color.White)
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
@@ -163,7 +170,6 @@ fun AccountsScreen(
             }
         }
 
-        // Compact action chips — icon + short label, no truncation
         Row(
             Modifier.fillMaxWidth().padding(vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)

@@ -40,14 +40,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.data.AccountEntity
+import com.sakume.personalfinance.ui.AppPrefs
 import com.sakume.personalfinance.ui.rupiah
 import com.sakume.personalfinance.ui.theme.CardBg
 import com.sakume.personalfinance.ui.theme.Ink
@@ -61,7 +66,6 @@ import java.util.Locale
 private val FieldBg = Color(0xFFFFFFFF)
 private val CancelBg = Color(0xFFE8E8E8)
 
-/** Format digit-only string as Indonesian thousand-separated display. */
 fun formatRibuan(digits: String): String {
     if (digits.isEmpty()) return ""
     val n = digits.toLongOrNull() ?: return digits
@@ -93,18 +97,45 @@ private fun AppBottomSheet(onDismiss: () -> Unit, content: @Composable () -> Uni
     }
 }
 
+
+private class AutoTrailingZerosTransformation(private val zeroCount: Int) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val digits = text.text.filter { it.isDigit() }
+        if (digits.isEmpty() || zeroCount <= 0) {
+            val shown = if (digits.isEmpty()) "" else formatRibuan(digits)
+            val mapping = object : OffsetMapping {
+                override fun originalToTransformed(offset: Int): Int = shown.length
+                override fun transformedToOriginal(offset: Int): Int = digits.length
+            }
+            return TransformedText(AnnotatedString(shown), mapping)
+        }
+        val full = digits + "0".repeat(zeroCount)
+        val formatted = formatRibuan(full)
+        val offsetMapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int = formatted.length
+            override fun transformedToOriginal(offset: Int): Int = digits.length
+        }
+        return TransformedText(AnnotatedString(formatted), offsetMapping)
+    }
+}
+
 @Composable
 private fun SheetField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
     isMoney: Boolean = false,
+    autoThousand: Boolean = false,
     singleLine: Boolean = true
 ) {
     if (isMoney) {
-        var tf by remember {
-            mutableStateOf(TextFieldValue(formatRibuan(digitsOnly(value))))
-        }
+        val context = LocalContext.current
+        val zeroCount = remember { AppPrefs.trailingZeros(context) }
+        val zerosStr = if (zeroCount > 0) "0".repeat(zeroCount) else ""
+        val digits = digitsOnly(value)
+        val displayText = if (autoThousand) digits else formatRibuan(digits)
+        val tf = TextFieldValue(displayText, TextRange(displayText.length))
+
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -114,13 +145,26 @@ private fun SheetField(
                 value = tf,
                 onValueChange = { incoming ->
                     val dig = digitsOnly(incoming.text)
-                    val formatted = formatRibuan(dig)
-                    tf = TextFieldValue(formatted, TextRange(formatted.length))
                     onValueChange(dig)
                 },
                 label = { Text(label) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                visualTransformation = if (autoThousand && zeroCount > 0) {
+                    AutoTrailingZerosTransformation(zeroCount)
+                } else if (autoThousand) {
+                    VisualTransformation { text ->
+                        val d = text.text.filter { it.isDigit() }
+                        val shown = if (d.isEmpty()) "" else formatRibuan(d)
+                        val mapping = object : OffsetMapping {
+                            override fun originalToTransformed(offset: Int) = shown.length
+                            override fun transformedToOriginal(offset: Int) = d.length
+                        }
+                        TransformedText(AnnotatedString(shown), mapping)
+                    }
+                } else {
+                    VisualTransformation.None
+                },
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(12.dp),
                 colors = TextFieldDefaults.colors(
@@ -132,28 +176,27 @@ private fun SheetField(
                     disabledIndicatorColor = Color.Transparent
                 )
             )
-            Text(
-                text = "000",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Ink)
-                    .clickable {
-                        val dig = digitsOnly(tf.text) + "000"
-                        val formatted = formatRibuan(dig)
-                        tf = TextFieldValue(formatted, TextRange(formatted.length))
-                        onValueChange(dig)
-                    }
-                    .padding(horizontal = 14.dp, vertical = 16.dp)
-            )
+            if (zeroCount > 0) {
+                Text(
+                    text = zerosStr,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Ink)
+                        .clickable {
+                            val dig = digits + zerosStr
+                            onValueChange(dig)
+                        }
+                        .padding(horizontal = 14.dp, vertical = 16.dp)
+                )
+            }
         }
     } else {
         TextField(
             value = value,
             onValueChange = { onValueChange(it.replaceFirstChar { c -> if (c.isLowerCase()) c.titlecase() else c.toString() }.let { s ->
-                // capitalize each word start after space
                 buildString {
                     var cap = true
                     s.forEach { ch ->
@@ -233,15 +276,17 @@ fun FormDialog(
     initialExtraIndex: Int = 0,
     initialTertiaryIndex: Int = 0,
     moneyFields: Set<Int> = emptySet(),
-    /** Suggestions for free-text fields keyed by field index (e.g. existing providers for index 0). */
     fieldSuggestions: Map<Int, List<String>> = emptyMap(),
     includeDueDate: Boolean = false,
     dueDateLabel: String = "Tanggal jatuh tempo",
+    initialValues: List<String> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (List<String>) -> Unit
 ) {
     val values = remember(title) {
-        mutableStateListOf<String>().apply { repeat(fields.size) { add("") } }
+        mutableStateListOf<String>().apply {
+            fields.indices.forEach { i -> add(initialValues.getOrElse(i) { "" }) }
+        }
     }
     var selectedOpt by remember(title) { mutableIntStateOf(initialOptionIndex.coerceIn(0, maxOf(options.lastIndex, 0))) }
     var selectedExtra by remember(title) { mutableIntStateOf(initialExtraIndex.coerceIn(0, maxOf(extraOptions.lastIndex, 0))) }
@@ -286,7 +331,6 @@ fun FormDialog(
                             label = field,
                             isMoney = false
                         )
-                        // Tap area on trailing side opens suggestions
                     }
                     if (suggestions.isNotEmpty()) {
                         Text("Pilih yang sudah ada", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
@@ -312,11 +356,16 @@ fun FormDialog(
                         }
                     }
                 } else {
+                    val money = i in moneyFields || field.contains("Nominal", true) || field.contains("Saldo", true) || field.contains("Target", true)
+                    val autoZeros = money &&
+                        field.contains("Nominal", ignoreCase = true) &&
+                        !field.contains("Total", ignoreCase = true)
                     SheetField(
                         value = values[i],
                         onValueChange = { values[i] = it },
                         label = field,
-                        isMoney = i in moneyFields || field.contains("Nominal", true) || field.contains("Saldo", true) || field.contains("Target", true)
+                        isMoney = money,
+                        autoThousand = autoZeros
                     )
                 }
                 if (includeDueDate && i == minOf(1, fields.lastIndex)) {
@@ -354,11 +403,21 @@ fun FormDialog(
                 }
             }
             if (options.isNotEmpty()) {
-
                 Text(optionLabel, color = Muted, fontSize = 12.sp)
-                if (options.size <= 6) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        options.forEachIndexed { i, opt ->
+                val isTenor = optionLabel.contains("Tenor", ignoreCase = true)
+                val useChips = isTenor || (
+                    options.size <= 3 &&
+                        !optionLabel.contains("rekening", ignoreCase = true) &&
+                        !optionLabel.contains("Dari", ignoreCase = true) &&
+                        !optionLabel.contains("Ke ", ignoreCase = true)
+                    )
+                if (useChips) {
+                    androidx.compose.foundation.lazy.LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(options.size) { i ->
+                            val opt = options[i]
                             SelectableChip(
                                 label = optionDisplay(opt),
                                 selected = selectedOpt == i,
@@ -457,11 +516,7 @@ fun FormDialog(
     }
 }
 
-/**
- * Sheet gabungan Tarik Tunai / Setor Tunai.
- * Tarik tunai: rekening non-tunai -> rekening tunai (uang keluar dari bank, masuk ke dompet fisik).
- * Setor tunai: rekening tunai -> rekening non-tunai (uang dari dompet fisik disetor ke bank).
- */
+
 @Composable
 fun CashTransferDialog(
     accounts: List<AccountEntity>,
@@ -470,6 +525,7 @@ fun CashTransferDialog(
     onDismiss: () -> Unit,
     onConfirm: (isWithdraw: Boolean, otherAccount: AccountEntity, cashAccount: AccountEntity, amount: Long, note: String) -> Unit
 ) {
+    val context = LocalContext.current
     val cashAccounts = accounts.filter(isCash)
     val otherAccounts = accounts.filterNot(isCash)
 
@@ -506,7 +562,8 @@ fun CashTransferDialog(
                     value = amountDigits,
                     onValueChange = { amountDigits = it },
                     label = "Nominal",
-                    isMoney = true
+                    isMoney = true,
+                    autoThousand = true
                 )
 
                 Text(if (isWithdraw) "Dari rekening" else "Dari Cash", color = Muted, fontSize = 12.sp)
@@ -577,7 +634,8 @@ fun CashTransferDialog(
             SheetButton(
                 if (isWithdraw) "Tarik" else "Setor",
                 {
-                    val amount = amountDigits.toLongOrNull() ?: 0L
+                    val mul = AppPrefs.multiplier(AppPrefs.trailingZeros(context))
+                    val amount = (amountDigits.toLongOrNull() ?: 0L) * mul
                     val other = otherAccount
                     val cash = cashAccount
                     if (other != null && cash != null && amount > 0) {

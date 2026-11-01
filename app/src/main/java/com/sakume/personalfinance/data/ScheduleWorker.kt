@@ -10,10 +10,6 @@ import androidx.work.WorkerParameters
 import com.sakume.personalfinance.ui.Notify
 import java.util.concurrent.TimeUnit
 
-/**
- * Worker periodik yang menjalankan jadwal investasi & gaji bahkan saat app tidak dibuka.
- * Dijadwalkan setiap ~15 menit (minimum WorkManager periodik).
- */
 class ScheduleWorker(
     appContext: Context,
     params: WorkerParameters
@@ -23,15 +19,17 @@ class ScheduleWorker(
         return try {
             val db = AppDatabase.get(applicationContext)
             val repo = FinanceRepository(db)
-            val result = repo.processDueSchedules()
+            val days = com.sakume.personalfinance.ui.AppPrefs.maxCatchupDays(applicationContext)
+            val result = repo.processDueSchedules(maxCatchupDays = days)
 
-            if (result.investmentRuns.isNotEmpty()) {
+            val notify = com.sakume.personalfinance.ui.AppPrefs.notificationsEnabled(applicationContext)
+            if (notify && result.investmentRuns.isNotEmpty()) {
                 Notify.investmentSuccess(
                     applicationContext,
                     result.investmentRuns.joinToString("\n") { "• $it" }
                 )
             }
-            if (result.salaryRuns.isNotEmpty()) {
+            if (notify && result.salaryRuns.isNotEmpty()) {
                 Notify.salarySuccess(
                     applicationContext,
                     result.salaryRuns.joinToString("\n") { "• $it" }

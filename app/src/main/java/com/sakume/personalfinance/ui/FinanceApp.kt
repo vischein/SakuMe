@@ -37,10 +37,32 @@ import com.sakume.personalfinance.ui.screens.BillsScreen
 import com.sakume.personalfinance.ui.screens.HomeScreen
 import com.sakume.personalfinance.ui.screens.InvestmentScreen
 import com.sakume.personalfinance.ui.screens.MoreScreen
+import com.sakume.personalfinance.ui.screens.SettingsScreen
 import com.sakume.personalfinance.ui.theme.SakuMeTheme
 import com.sakume.personalfinance.ui.theme.Paper
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.sakume.personalfinance.ui.theme.Ink
+import com.sakume.personalfinance.ui.theme.Muted
 
 @Composable
 fun FinanceApp(vm: FinanceViewModel) {
@@ -61,6 +83,11 @@ fun FinanceApp(vm: FinanceViewModel) {
     var importResult by remember { mutableStateOf("") }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var unlocked by remember {
+        mutableStateOf(!AppPrefs.appLockEnabled(context))
+    }
+    var pinInput by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf("") }
 
     BackHandler(enabled = subScreen != null || tab != "Home") {
         when {
@@ -131,6 +158,62 @@ fun FinanceApp(vm: FinanceViewModel) {
     }
 
     SakuMeTheme {
+        if (!unlocked) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Paper)
+                    .padding(28.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("SakuMe", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Text("Masukkan PIN untuk membuka", color = Muted, fontSize = 14.sp)
+                    OutlinedTextField(
+                        value = pinInput,
+                        onValueChange = {
+                            if (it.length <= 6 && it.all(Char::isDigit)) {
+                                pinInput = it
+                                pinError = ""
+                            }
+                        },
+                        label = { Text("PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    if (pinError.isNotEmpty()) {
+                        Text(pinError, color = Color(0xFFD32F2F), fontSize = 13.sp)
+                    }
+                    Button(
+                        onClick = {
+                            if (AppPrefs.verifyPin(context, pinInput)) {
+                                unlocked = true
+                                pinInput = ""
+                                pinError = ""
+                            } else {
+                                pinError = "PIN salah"
+                                pinInput = ""
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Ink),
+                        enabled = pinInput.length in 4..6
+                    ) {
+                        Text("Buka")
+                    }
+                }
+            }
+            return@SakuMeTheme
+        }
+
         Scaffold(
             containerColor = Paper,
             bottomBar = {
@@ -147,7 +230,16 @@ fun FinanceApp(vm: FinanceViewModel) {
                         .fillMaxSize()
                         .padding(padding)
                 ) {
-                    if (subScreen == "txHistory") {
+                    if (subScreen == "settings") {
+                        SettingsScreen(
+                            onBack = { subScreen = null },
+                            onOpenBackup = { subScreen = "backup" },
+                            onAddSalary = {
+                                subScreen = null
+                                dialog = "salary"
+                            }
+                        )
+                    } else if (subScreen == "txHistory") {
                         TransactionHistoryScreen(
                             accounts = accounts,
                             tx = transactions,
@@ -199,7 +291,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                                     else -> dialog = action
                                 }
                             },
-                            onBackup = { subScreen = "backup" },
+                            onOpenSettings = { subScreen = "settings" },
                             onSeeAllTx = { subScreen = "txHistory" }
                         )
                         "Accounts" -> AccountsScreen(
@@ -233,6 +325,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                             onSchedule = { a -> dialog = "schedule:${a.id}" },
                             onToggleSchedule = { s, on -> vm.setScheduleEnabled(s.id, on) },
                             onDeleteSchedule = { s -> vm.deleteSchedule(s.id) },
+                            onEdit = { a -> dialog = "editinvest:${a.id}" },
                             onDelete = { a -> dialog = "deleteinvest:${a.id}" }
                         )
                         else -> MoreScreen(
@@ -240,13 +333,18 @@ fun FinanceApp(vm: FinanceViewModel) {
                             accounts = accounts,
                             salaries = salaries,
                             initialDebtFilter = debtFilter,
-                            onAddDebt = { dialog = "debt" },
+                            onAddDebt = { filter ->
+                                debtFilter = filter
+                                dialog = "debt"
+                            },
                             onPaid = { d -> dialog = "paydebt:${d.id}" },
                             onUnpaid = { d -> vm.markDebtUnpaid(d) { error = it } },
                             onAddSalary = { dialog = "salary" },
                             onEditSalary = { s -> dialog = "editsalary:${s.id}" },
                             onToggleSalary = { s, on -> vm.setSalaryEnabled(s.id, on) },
-                            onDeleteSalary = { s -> dialog = "deletesalary:${s.id}" }
+                            onDeleteSalary = { s -> dialog = "deletesalary:${s.id}" },
+                            onOpenSettings = { subScreen = "settings" },
+                            onDebtFilterChange = { debtFilter = it }
                         )
                     }
                 }
@@ -286,7 +384,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                 extraOptionLabel = "Rekening",
                 onDismiss = { dialog = "" }
             ) { v ->
-                val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
                 val type = v.getOrElse(2) { "expense" }
                 val accName = v.getOrElse(3) { accounts.firstOrNull()?.name.orEmpty() }
                 val acc = accounts.firstOrNull { it.name == accName }
@@ -318,7 +416,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                 extraOptionLabel = "Ke rekening",
                 onDismiss = { dialog = "" }
             ) { v ->
-                val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
                 val from = accounts.firstOrNull { it.name == v.getOrElse(2) { "" } }
                 val to = accounts.firstOrNull { it.name == v.getOrElse(3) { "" } }
                 when {
@@ -351,6 +449,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                 fields = listOf("Provider", "Nama item", "Total nominal"),
                 options = listOf("1", "3", "6", "9", "12"),
                 optionLabel = "Tenor (bulan)",
+                optionDisplay = { "$it bulan" },
                 fieldSuggestions = mapOf(
                     0 to bills.map { it.provider }.distinct().sorted()
                 ),
@@ -421,6 +520,34 @@ fun FinanceApp(vm: FinanceViewModel) {
                 }
             }
 
+            dialog.startsWith("editinvest:") -> {
+                val asset = investments.firstOrNull { it.id == dialog.substringAfter(":") }
+                if (asset == null) {
+                    dialog = ""
+                } else {
+                    FormDialog(
+                        title = "Edit aset",
+                        fields = listOf("Nama aset", "Target (opsional)"),
+                        options = emptyList(),
+                        initialValues = listOf(
+                            asset.name,
+                            asset.target?.toString().orEmpty()
+                        ),
+                        onDismiss = { dialog = "" }
+                    ) { v ->
+                        if (v[0].isBlank()) error = "Nama aset wajib diisi"
+                        else {
+                            vm.updateInvestment(
+                                asset.id,
+                                v[0],
+                                v[1].filter { it.isDigit() }.toLongOrNull()
+                            ) { error = it }
+                            dialog = ""
+                        }
+                    }
+                }
+            }
+
             dialog.startsWith("schedule:") -> {
                 val asset = investments.firstOrNull { it.id == dialog.substringAfter(":") }
                 FormDialog(
@@ -444,7 +571,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                     extraOptionLabel = "Dari rekening",
                     onDismiss = { dialog = "" }
                 ) { v ->
-                    val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                    val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
                     val day = v.getOrElse(1) { "2" }.toIntOrNull() ?: 2
                     val acc = accounts.firstOrNull { it.name == v.getOrElse(2) { "" } }
                     when {
@@ -468,7 +595,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                     optionLabel = "Ke rekening",
                     onDismiss = { dialog = "" }
                 ) { v ->
-                    val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                    val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
                     val acc = accounts.firstOrNull { it.name == v.getOrElse(1) { "" } }
                     when {
                         asset == null -> error = "Aset tidak ditemukan"
@@ -492,7 +619,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                     optionLabel = "Dari rekening",
                     onDismiss = { dialog = "" }
                 ) { v ->
-                    val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                    val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
                     val acc = accounts.firstOrNull { it.name == v.getOrElse(1) { "" } }
                     when {
                         asset == null -> error = "Aset tidak ditemukan"
@@ -549,7 +676,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                 initialTertiaryIndex = 9,
                 onDismiss = { dialog = "" }
             ) { v ->
-                val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
                 val freq = v.firstOrNull { it in listOf("daily", "biweekly", "monthly") } ?: "monthly"
                 val acc = accounts.firstOrNull { a -> v.any { it == a.name } }
                 val hour = v.mapNotNull { it.toIntOrNull() }.firstOrNull { it in 0..23 } ?: 9
@@ -586,7 +713,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                     initialTertiaryIndex = s?.hourOfDay?.coerceIn(0, 23) ?: 9,
                     onDismiss = { dialog = "" }
                 ) { v ->
-                    val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                    val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
                     val freq = v.firstOrNull { it in listOf("daily", "biweekly", "monthly") } ?: "monthly"
                     val acc = accounts.firstOrNull { a -> v.any { it == a.name } }
                     val hour = v.mapNotNull { it.toIntOrNull() }.firstOrNull { it in 0..23 } ?: 9
@@ -652,7 +779,6 @@ fun FinanceApp(vm: FinanceViewModel) {
                     else -> "Tambah piutang / utang"
                 },
                 fields = listOf("Nama orang", "Deskripsi", "Nominal"),
-                // Jika sudah filter Piutang/Utang, jenis otomatis — opsi tidak ditampilkan
                 options = if (debtFilter == "Piutang" || debtFilter == "Utang") emptyList()
                 else listOf("piutang", "utang"),
                 optionLabel = "Jenis",
@@ -660,7 +786,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                 initialOptionIndex = when (debtFilter) { "Utang" -> 1; else -> 0 },
                 onDismiss = { dialog = "" }
             ) { v ->
-                val amount = v[2].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                val amount = (v[2].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
                 val type = when (debtFilter) {
                     "Piutang" -> "piutang"
                     "Utang" -> "utang"

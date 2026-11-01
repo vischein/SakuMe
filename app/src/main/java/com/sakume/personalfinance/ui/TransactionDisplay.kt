@@ -3,13 +3,6 @@ package com.sakume.personalfinance.ui
 import com.sakume.personalfinance.data.AccountEntity
 import com.sakume.personalfinance.data.TransactionEntity
 
-/**
- * Single display mapping used by Home "Transaksi terbaru" and the full history.
- *
- * Transfer pairs are collapsed into one display transaction. Cash withdrawals
- * and deposits are normalized to "Tarik tunai" / "Setor tunai", while normal
- * transfers keep the "from → to" account label.
- */
 fun buildDisplayTransactions(
     transactions: List<TransactionEntity>,
     accounts: List<AccountEntity>

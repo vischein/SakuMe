@@ -82,6 +82,9 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addInvestment(name: String, target: Long?) = run({ addInvestment(name, target) })
 
+    fun updateInvestment(id: String, name: String, target: Long?, error: (String) -> Unit = {}) =
+        run({ updateInvestment(id, name, target) }, error)
+
     fun contribute(asset: String, account: String, amount: Long, error: (String) -> Unit) =
         run({ contribute(asset, account, amount) }, error)
 
@@ -100,17 +103,16 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
     fun processDueSchedules(onDone: (FinanceRepository.ScheduleRunResult) -> Unit = {}) {
         viewModelScope.launch {
             try {
-                onDone(repo.processDueSchedules())
+                val days = AppPrefs.maxCatchupDays(getApplication())
+                onDone(repo.processDueSchedules(maxCatchupDays = days))
             } catch (_: Exception) {
             }
         }
     }
 
-    /** Tarik tunai: pindahkan saldo dari rekening bank/e-wallet ke rekening Cash. */
     fun withdrawCash(fromAccountId: String, toCashAccountId: String, amount: Long, note: String = "Tarik tunai", error: (String) -> Unit) =
         run({ transfer(fromAccountId, toCashAccountId, amount, note) }, error)
 
-    /** Setor tunai: pindahkan saldo dari rekening tunai ke rekening bank/e-wallet. */
     fun depositCash(fromCashAccountId: String, toAccountId: String, amount: Long, note: String = "Setor tunai", error: (String) -> Unit) =
         run({ transfer(fromCashAccountId, toAccountId, amount, note) }, error)
 

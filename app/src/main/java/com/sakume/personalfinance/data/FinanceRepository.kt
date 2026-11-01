@@ -295,6 +295,13 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.putInvestment(InvestmentEntity(id(), name.trim(), target))
     }
 
+    suspend fun updateInvestment(id: String, name: String, target: Long?) {
+        val asset = dao.allInvestments().firstOrNull { it.id == id }
+            ?: error("Aset tidak ditemukan")
+        require(name.isNotBlank()) { "Nama aset wajib diisi" }
+        dao.putInvestment(asset.copy(name = name.trim(), target = target?.takeIf { it > 0 }))
+    }
+
     suspend fun contribute(assetId: String, accountId: String, amount: Long) = db.withTransaction {
         require(amount > 0) { "Nominal harus lebih dari nol" }
         val asset = dao.allInvestments().firstOrNull { it.id == assetId && !it.archived }
@@ -408,10 +415,18 @@ class FinanceRepository(private val db: AppDatabase) {
         val failures: List<String> = emptyList()
     )
 
-    suspend fun processDueSchedules(now: Long = System.currentTimeMillis()): ScheduleRunResult {
+    /**
+     * @param maxCatchupDays jangan proses occurrence lebih lama dari N hari ke belakang
+     *        (mencegah ratusan transaksi retroaktif jika app tidak dibuka berbulan-bulan).
+     */
+    suspend fun processDueSchedules(
+        now: Long = System.currentTimeMillis(),
+        maxCatchupDays: Int = 30
+    ): ScheduleRunResult {
         val investmentRuns = mutableListOf<String>()
         val salaryRuns = mutableListOf<String>()
         val failures = mutableListOf<String>()
+        val earliest = now - maxCatchupDays.coerceIn(1, 365) * 86_400_000L
         // Kejar setiap jadwal mingguan yang terlewat. lastRunMillis menyimpan tanggal
         // jadwal yang benar-benar diproses, bukan waktu aplikasi kebetulan dibuka.
         for (initial in dao.allSchedules()) {
@@ -421,6 +436,13 @@ class FinanceRepository(private val db: AppDatabase) {
             var dueAt = nextWeeklyDue(schedule, now)
             while (dueAt != null && dueAt <= now) {
                 val occurrenceAt = dueAt
+                if (occurrenceAt < earliest) {
+                    // Loncat ke batas catch-up: tandai lastRun agar tidak mengulang masa lalu jauh.
+                    dao.putSchedule(schedule.copy(lastRunMillis = earliest))
+                    schedule = schedule.copy(lastRunMillis = earliest)
+                    dueAt = nextWeeklyDue(schedule, now)
+                    continue
+                }
                 try {
                     db.withTransaction {
                         // Baca ulang di dalam transaksi agar worker dan pembukaan app
@@ -473,6 +495,12 @@ class FinanceRepository(private val db: AppDatabase) {
             var dueAt = nextSalaryDue(schedule, now)
             while (dueAt != null && dueAt <= now) {
                 val occurrenceAt = dueAt
+                if (occurrenceAt < earliest) {
+                    dao.putSalary(schedule.copy(lastRunMillis = earliest))
+                    schedule = schedule.copy(lastRunMillis = earliest)
+                    dueAt = nextSalaryDue(schedule, now)
+                    continue
+                }
                 try {
                     var inserted = false
                     db.withTransaction {
@@ -684,7 +712,6 @@ class FinanceRepository(private val db: AppDatabase) {
         )
     }
 
-    /** Batalkan status lunas tanpa double-reverse saldo. */
     suspend fun markDebtUnpaid(debt: DebtEntity) = db.withTransaction {
         require(debt.isPaid) { "Belum lunas" }
         val txId = debt.paymentTransactionId

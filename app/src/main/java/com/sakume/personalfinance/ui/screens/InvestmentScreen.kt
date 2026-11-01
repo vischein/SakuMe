@@ -64,6 +64,7 @@ fun InvestmentScreen(
     onSchedule: (InvestmentEntity) -> Unit,
     onToggleSchedule: (ScheduledInvestmentEntity, Boolean) -> Unit,
     onDeleteSchedule: (ScheduledInvestmentEntity) -> Unit,
+    onEdit: (InvestmentEntity) -> Unit = {},
     onDelete: (InvestmentEntity) -> Unit
 ) {
     val active = items.filterNot { it.archived }
@@ -187,17 +188,31 @@ fun InvestmentScreen(
                                 }
                             }
                             Spacer(Modifier.height(6.dp))
-                            Button(
-                                onClick = { onDelete(a) },
-                                modifier = Modifier.fillMaxWidth().height(34.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = RedSoft,
-                                    contentColor = Red
-                                ),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("Hapus / Refund", fontSize = 12.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Button(
+                                    onClick = { onEdit(a) },
+                                    modifier = Modifier.weight(1f).height(34.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Paper,
+                                        contentColor = Ink
+                                    ),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("Edit", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                                Button(
+                                    onClick = { onDelete(a) },
+                                    modifier = Modifier.weight(1f).height(34.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = RedSoft,
+                                        contentColor = Red
+                                    ),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("Hapus / Refund", fontSize = 12.sp)
+                                }
                             }
                         }
                     }
@@ -245,7 +260,7 @@ fun InvestmentScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        "${rupiah(s.amount)} · tiap ${dayNames.getOrElse(s.dayOfWeek) { "?" }}",
+                                        "${rupiah(s.amount)} ( tiap ${dayNames.getOrElse(s.dayOfWeek) { "?" }} )",
                                         color = Muted,
                                         fontSize = 12.sp
                                     )

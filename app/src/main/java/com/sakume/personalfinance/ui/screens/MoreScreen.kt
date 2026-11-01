@@ -46,9 +46,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import com.sakume.personalfinance.data.AccountEntity
 import com.sakume.personalfinance.data.DebtEntity
 import com.sakume.personalfinance.data.SalaryScheduleEntity
+import com.sakume.personalfinance.ui.AppPrefs
 import com.sakume.personalfinance.ui.components.EmptyHint
 import com.sakume.personalfinance.ui.components.SelectableChip
 import com.sakume.personalfinance.ui.components.StatTile
@@ -71,21 +73,36 @@ private fun freqLabel(f: String) = when (f) {
     else -> f
 }
 
+private fun formatExample(prefix: Int, zeros: Int): String {
+    val full = prefix.toString() + "0".repeat(zeros)
+    return try {
+        java.text.NumberFormat.getInstance(java.util.Locale("id", "ID")).format(full.toLong())
+    } catch (_: Exception) {
+        full
+    }
+}
+
 @Composable
 fun MoreScreen(
     debts: List<DebtEntity>,
     accounts: List<AccountEntity>,
     salaries: List<SalaryScheduleEntity>,
     initialDebtFilter: String = "Semua",
-    onAddDebt: () -> Unit,
+    onAddDebt: (filter: String) -> Unit,
     onPaid: (DebtEntity) -> Unit,
     onUnpaid: (DebtEntity) -> Unit,
     onAddSalary: () -> Unit,
     onEditSalary: (SalaryScheduleEntity) -> Unit,
     onToggleSalary: (SalaryScheduleEntity, Boolean) -> Unit,
-    onDeleteSalary: (SalaryScheduleEntity) -> Unit
+    onDeleteSalary: (SalaryScheduleEntity) -> Unit,
+    onOpenSettings: () -> Unit = {},
+    onDebtFilterChange: (String) -> Unit = {}
 ) {
     var debtFilter by remember(initialDebtFilter) { mutableStateOf(initialDebtFilter) }
+    fun setDebtFilter(value: String) {
+        debtFilter = value
+        onDebtFilterChange(value)
+    }
     val piutang = debts.filter { it.type == "piutang" && !it.isPaid }.sumOf { it.amount }
     val utang = debts.filter { it.type == "utang" && !it.isPaid }.sumOf { it.amount }
     val accountName = { id: String -> accounts.firstOrNull { it.id == id }?.name ?: "Rekening" }
@@ -154,30 +171,36 @@ fun MoreScreen(
                                 Switch(checked = s.enabled, onCheckedChange = { onToggleSalary(s, it) })
                             }
                             Spacer(Modifier.height(6.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(
-                                    "Edit",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(Ink)
-                                        .clickable { onEditSalary(s) }
-                                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                                )
-                                Text(
-                                    "Hapus",
-                                    color = Red,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(RedSoft)
-                                        .clickable { onDeleteSalary(s) }
-                                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                                )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth() 
+                            ) {
+                                Button(
+                                       onClick = { onEditSalary(s) },
+                                       modifier = Modifier.weight(1f).height(36.dp),
+                                       shape = RoundedCornerShape(10.dp),
+                                       colors = ButtonDefaults.buttonColors(
+                                       containerColor = Ink,
+                                       contentColor = Color.White
+                                ),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text("Edit", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                                Button(
+                                       onClick = { onDeleteSalary(s) },
+                                       modifier = Modifier.weight(1f).height(36.dp),
+                                       shape = RoundedCornerShape(10.dp),
+                                       colors = ButtonDefaults.buttonColors(
+                                       containerColor = RedSoft,
+                                       contentColor = Red
+                                ),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                               Text("Hapus", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                               }
                             }
+
                         }
                     }
                 }
@@ -188,8 +211,6 @@ fun MoreScreen(
                 Text("Piutang / Utang", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Ink)
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Summary cards: selected = black bg / white text; unselected = white bg / black text
-                    // Icons keep their color
                     val piutangSelected = debtFilter == "Piutang"
                     val utangSelected = debtFilter == "Utang"
                     Row(
@@ -202,7 +223,7 @@ fun MoreScreen(
                                 else Modifier
                             )
                             .clickable {
-                                debtFilter = if (debtFilter == "Piutang") "Semua" else "Piutang"
+                                setDebtFilter(if (debtFilter == "Piutang") "Semua" else "Piutang")
                             }
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -234,7 +255,7 @@ fun MoreScreen(
                                 else Modifier
                             )
                             .clickable {
-                                debtFilter = if (debtFilter == "Utang") "Semua" else "Utang"
+                                setDebtFilter(if (debtFilter == "Utang") "Semua" else "Utang")
                             }
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -263,7 +284,7 @@ fun MoreScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(Ink)
-                        .clickable(onClick = onAddDebt)
+                        .clickable { onAddDebt(debtFilter) }
                         .padding(vertical = 12.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically

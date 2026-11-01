@@ -29,7 +29,7 @@ import androidx.compose.material.icons.filled.CallReceived
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.TrendingUp
-import androidx.compose.material.icons.outlined.Backup
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -86,7 +86,7 @@ fun HomeScreen(
     investments: List<InvestmentEntity>,
     debts: List<DebtEntity>,
     onAction: (String) -> Unit,
-    onBackup: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     onSeeAllTx: () -> Unit = {}
 ) {
     val total = accounts.sumOf { it.balance }
@@ -125,10 +125,10 @@ fun HomeScreen(
                         .size(44.dp)
                         .background(CardBg, CircleShape)
                         .border(1.dp, Color(0xFFEEEEEE), CircleShape)
-                        .clickable(onClick = onBackup),
+                        .clickable(onClick = onOpenSettings),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Outlined.Backup, null, tint = Ink, modifier = Modifier.size(22.dp))
+                    Icon(Icons.Outlined.Settings, null, tint = Ink, modifier = Modifier.size(22.dp))
                 }
             }
         }
@@ -292,7 +292,7 @@ fun HomeScreen(
                     rupiah(debts.filter { it.type == "piutang" && !it.isPaid }.sumOf { it.amount }),
                     Icons.Filled.CallReceived,
                     CardBg,
-                    Gold,
+                    Green,
                     Modifier.weight(1f)
                 ) { onAction("more:piutang") }
             StatTile(
