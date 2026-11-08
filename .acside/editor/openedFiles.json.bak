@@ -1,0 +1,20 @@
+{
+  "allFiles": [
+    {
+      "file": "/storage/emulated/0/Documents/lahul/DompetKu/app/src/main/java/com/finora/personalfinance/ui/screens/AccountsScreen.kt",
+      "selection": {
+        "end": {
+          "column": 27,
+          "index": 9204,
+          "line": 213
+        },
+        "start": {
+          "column": 27,
+          "index": 9204,
+          "line": 213
+        }
+      }
+    }
+  ],
+  "selectedFile": "/storage/emulated/0/Documents/lahul/DompetKu/app/src/main/java/com/finora/personalfinance/ui/screens/AccountsScreen.kt"
+}
