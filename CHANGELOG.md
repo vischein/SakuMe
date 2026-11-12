@@ -1,22 +1,48 @@
 # Changelog
 
+## [1.3] - 2026-11-13
+
+### Added
+- Automatic backup: saved whenever the app is closed (only if data changed) and every 12 hours; one file per day, history kept for 7/14/30/60 days
+- Backup list by date with one-tap restore; a "before import" safety copy is saved automatically before every restore
+- Optional backup folder (Storage Access Framework) so copies survive uninstall; picking the same folder after reinstall lists the old backups again
+- Backup now includes app settings (nominal input, notifications, bill reminder, catch-up, auto-backup) and format metadata
+- Bill due reminder: one notification on the due day (optional H-1 / H-3 / H-7), at a configurable hour; follows each bill's own due date
+- Tapping a notification opens the relevant tab (Bills / Invest / Home)
+
+### Changed
+- Redesigned salary / investment / schedule-failure notification text (formatted rupiah, account, balance after)
+- Notifications use a proper monochrome status-bar icon
+- Turning notifications off no longer stops background salary / investment processing — it only silences notifications
+- Export now includes settings and metadata
+- Redesigned dropdown menu (consistent item layout, clearer selected/hover states, smoother animation, adjusted padding).
+
+### Fixed
+- Deleting an income / incoming transfer could push an account balance below zero; it is now blocked with a clear message
+- Batch delete now processes expenses before incomes so a valid selection no longer fails because of ordering
+- Notifications on app open ignored the notification switch
+
+### Removed
+- PIN / app lock feature
+- Removed the "000" shortcut button from the nominal input sheet; amounts are now typed in full.
+
 ## [1.2] - 2026-11-12
 
 ### Added
-- Layar Analisis menggantikan tab Accounts: ringkasan pemasukan/pengeluaran, netto, rata-rata harian, tingkat tabungan, insight singkat, breakdown per kategori & rekening, pengeluaran terbesar, serta tagihan/utang yang dibayar di periode itu
-- Filter periode di Analisis: bulan ini, bulan lalu, 3 bulan, dan tahun ini, plus perbandingan vs periode sebelumnya
-- Pengelompokan kategori otomatis untuk nama yang mirip (mis. beberapa variasi “Rokok …” digabung jadi satu grup, admin bank, tagihan, BBM, dll.)
-- Akses Kelola rekening dari Analisis atau dari “Lihat semua” di Home (tambah, urut, hapus, transfer, tarik tunai tetap ada)
+- Analysis screen replacing the Accounts tab: income/expense summary, net amount, daily average, savings rate, short insights, breakdown by category & account, largest expense, plus bills/debts paid during the period
+- Period filter in Analysis: this month, last month, 3 months, and this year, with comparison against the previous period
+- Automatic category grouping for similar names (e.g. multiple "Rokok …" variations merged into one group, bank admin fees, bills, fuel, etc.)
+- Manage accounts accessible from Analysis or via "See all" on Home (add, reorder, delete, transfer, and cash withdrawal are still available)
 
 ### Changed
-- Sheet pilih rekening (bayar tagihan, pembayaran utang, dll.): checklist diganti card; yang dipilih dapat border hitam tipis, yang tidak hanya background card
-- Daftar rekening di sheet dibuat lebih pendek (nama + saldo satu baris) dan bisa di-scroll jika panjang
-- Mini card rekening di Home membuka histori akun itu, bukan layar rekening
-- Dompet Tunai / Cash tidak lagi muncul di mini card Home (sudah ada di card Cash dashboard); akun cash tetap ada di sistem
-- Bottom bar diganti gaya pill mengambang, lebih compact, dengan label yang lebih ringkas
+- Account picker sheet (bill payment, debt payment, etc.): checklist replaced with cards; the selected card gets a thin black border, unselected cards show only the card background
+- Account list in the sheet is now more compact (name + balance on one line) and scrollable when long
+- Mini account cards on Home now open the account's transaction history instead of the accounts screen
+- Petty Cash / Cash no longer appears in the Home mini cards (it already exists on the dashboard Cash card); the cash account remains in the system
+- Bottom bar redesigned as a floating pill, more compact, with shorter labels
 
 ### Removed
-- Tab Accounts di bottom bar (fungsinya diganti Analisis; kelola rekening jadi sub-screen)
+- Accounts tab from the bottom bar (replaced by Analysis; account management moved to a sub-screen)
 
 ## [Unreleased]
 

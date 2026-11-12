@@ -15,11 +15,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Tune
@@ -27,12 +25,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,8 +41,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.data.ScheduleWorker
@@ -67,12 +61,10 @@ fun SettingsScreen(
     val context = LocalContext.current
     var trailingZeros by remember { mutableStateOf(AppPrefs.trailingZeros(context)) }
     var notifEnabled by remember { mutableStateOf(AppPrefs.notificationsEnabled(context)) }
-    var lockEnabled by remember { mutableStateOf(AppPrefs.appLockEnabled(context)) }
     var catchupDays by remember { mutableStateOf(AppPrefs.maxCatchupDays(context)) }
-    var showPinSetup by remember { mutableStateOf(false) }
-    var pin1 by remember { mutableStateOf("") }
-    var pin2 by remember { mutableStateOf("") }
-    var pinError by remember { mutableStateOf("") }
+    var billReminder by remember { mutableStateOf(AppPrefs.billReminderEnabled(context)) }
+    var reminderHour by remember { mutableStateOf(AppPrefs.billReminderHour(context)) }
+    var earlyDays by remember { mutableStateOf(AppPrefs.billReminderEarlyDays(context)) }
 
     Column(
         Modifier
@@ -135,9 +127,10 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                            Text("Notifikasi jadwal", fontWeight = FontWeight.SemiBold, color = Ink, fontSize = 14.sp)
+                            Text("Notifikasi", fontWeight = FontWeight.SemiBold, color = Ink, fontSize = 14.sp)
                             Text(
-                                "Beritahu saat gaji/investasi otomatis berhasil diproses di background.",
+                                "Saklar utama. Gaji, setor investasi, dan pengingat tagihan hanya muncul kalau ini aktif. " +
+                                    "Jadwal tetap diproses di background walau dimatikan.",
                                 color = Muted,
                                 fontSize = 12.sp
                             )
@@ -147,8 +140,7 @@ fun SettingsScreen(
                             onCheckedChange = { on ->
                                 notifEnabled = on
                                 AppPrefs.setNotificationsEnabled(context, on)
-                                if (on) ScheduleWorker.enqueue(context)
-                                else ScheduleWorker.cancel(context)
+                                ScheduleWorker.enqueue(context)
                             },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
@@ -158,37 +150,28 @@ fun SettingsScreen(
                             )
                         )
                     }
-                }
-            }
 
-            item {
-                SettingsSection(icon = Icons.Filled.Lock, title = "Keamanan") {
+                    Spacer(Modifier.height(14.dp))
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                            Text("Kunci aplikasi (PIN)", fontWeight = FontWeight.SemiBold, color = Ink, fontSize = 14.sp)
+                            Text("Pengingat tagihan", fontWeight = FontWeight.SemiBold, color = Ink, fontSize = 14.sp)
                             Text(
-                                "Minta PIN setiap kali membuka app. Biometric bisa ditambah nanti lewat library sistem.",
+                                "Satu notifikasi di hari tagihan jatuh tempo. Mengikuti tanggal jatuh tempo yang kamu isi " +
+                                    "di tiap tagihan (PayLater tanggal 1, kartu kredit tanggal 17, dst), jadi berlaku untuk siapa saja.",
                                 color = Muted,
                                 fontSize = 12.sp
                             )
                         }
                         Switch(
-                            checked = lockEnabled,
+                            checked = billReminder,
+                            enabled = notifEnabled,
                             onCheckedChange = { on ->
-                                if (on) {
-                                    showPinSetup = true
-                                    pin1 = ""
-                                    pin2 = ""
-                                    pinError = ""
-                                } else {
-                                    lockEnabled = false
-                                    AppPrefs.clearPin(context)
-                                    showPinSetup = false
-                                }
+                                billReminder = on
+                                AppPrefs.setBillReminderEnabled(context, on)
                             },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
@@ -199,65 +182,32 @@ fun SettingsScreen(
                         )
                     }
 
-                    if (showPinSetup || (lockEnabled && AppPrefs.pinHash(context).isEmpty())) {
-                        Spacer(Modifier.height(10.dp))
-                        Text("Atur PIN (4–6 digit)", fontWeight = FontWeight.Medium, color = Ink, fontSize = 13.sp)
+                    if (billReminder && notifEnabled) {
+                        Spacer(Modifier.height(12.dp))
+                        Text("Jam pengingat", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(6.dp))
-                        OutlinedTextField(
-                            value = pin1,
-                            onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) pin1 = it },
-                            label = { Text("PIN baru") },
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        OutlinedTextField(
-                            value = pin2,
-                            onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) pin2 = it },
-                            label = { Text("Ulangi PIN") },
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        if (pinError.isNotEmpty()) {
-                            Text(pinError, color = Color(0xFFD32F2F), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Button(
-                            onClick = {
-                                when {
-                                    pin1.length !in 4..6 -> pinError = "PIN harus 4–6 digit"
-                                    pin1 != pin2 -> pinError = "PIN tidak sama"
-                                    else -> {
-                                        AppPrefs.setPin(context, pin1)
-                                        AppPrefs.setAppLockEnabled(context, true)
-                                        lockEnabled = true
-                                        showPinSetup = false
-                                        pin1 = ""
-                                        pin2 = ""
-                                        pinError = ""
-                                    }
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(AppPrefs.REMINDER_HOURS.size) { idx ->
+                                val h = AppPrefs.REMINDER_HOURS[idx]
+                                Chip(label = "%02d.00".format(h), selected = reminderHour == h) {
+                                    reminderHour = h
+                                    AppPrefs.setBillReminderHour(context, h)
+                                    // Beri kesempatan kirim ulang hari ini bila jam baru belum terlewati.
+                                    AppPrefs.setBillReminderLastDay(context, 0)
                                 }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(44.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Ink)
-                        ) {
-                            Text("Simpan PIN")
+                            }
                         }
-                    } else if (lockEnabled) {
-                        TextButton(onClick = {
-                            showPinSetup = true
-                            pin1 = ""
-                            pin2 = ""
-                            pinError = ""
-                        }) {
-                            Text("Ganti PIN", color = Ink)
+                        Spacer(Modifier.height(12.dp))
+                        Text("Ingatkan juga lebih awal", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(6.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(AppPrefs.EARLY_OPTIONS.size) { idx ->
+                                val d = AppPrefs.EARLY_OPTIONS[idx]
+                                Chip(label = if (d == 0) "Hari H saja" else "H-$d", selected = earlyDays == d) {
+                                    earlyDays = d
+                                    AppPrefs.setBillReminderEarlyDays(context, d)
+                                }
+                            }
                         }
                     }
                 }
@@ -298,7 +248,7 @@ fun SettingsScreen(
             item {
                 SettingsSection(icon = Icons.Filled.Backup, title = "Backup & restore") {
                     Text(
-                        "Ekspor/impor data keuangan. Saat ini file JSON belum terenkripsi — jangan bagikan ke sembarang orang.",
+                        "Backup otomatis, daftar backup per tanggal, dan restore. File JSON belum terenkripsi — jangan bagikan ke sembarang orang.",
                         color = Muted,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(bottom = 10.dp)
@@ -318,7 +268,7 @@ fun SettingsScreen(
                 SettingsSection(icon = Icons.Filled.Tune, title = "Tentang data") {
                     Text(
                         "Skala uang: 1 unit = Rp1 (rupiah utuh, bukan sen).\n" +
-                            "Versi app: 1.0, Room schema v9",
+                            "Versi app: 1.2, Room schema v12",
                         color = Muted,
                         fontSize = 12.sp,
                         lineHeight = 18.sp

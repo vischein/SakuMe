@@ -19,6 +19,9 @@ class FinanceRepository(private val db: AppDatabase) {
     val salaries: Flow<List<SalaryScheduleEntity>> = dao.salaries()
     private fun id() = UUID.randomUUID().toString()
 
+    private fun rupiahText(v: Long): String =
+        "Rp" + java.text.NumberFormat.getInstance(java.util.Locale("id", "ID")).format(v)
+
     suspend fun addAccount(name: String, type: String, opening: Long) = db.withTransaction {
         val cleanName = name.trim()
         require(cleanName.isNotBlank()) { "Nama rekening wajib diisi" }
@@ -83,7 +86,6 @@ class FinanceRepository(private val db: AppDatabase) {
         cleanupCategoryLabelsInternal()
     }
 
-    /** Rapikan label kategori lama (mis. "Tagihan • Kredivo" → "Tagihan Kredivo"). */
     suspend fun cleanupCategoryLabels() = db.withTransaction {
         cleanupCategoryLabelsInternal()
     }
@@ -123,9 +125,14 @@ class FinanceRepository(private val db: AppDatabase) {
     }
 
     suspend fun deleteTransactions(txIds: List<String>) = db.withTransaction {
-        txIds.asSequence().filter { it.isNotBlank() }.distinct().forEach {
-            deleteTransactionInternal(it)
+        val found = mutableListOf<TransactionEntity>()
+        for (id in txIds.filter { it.isNotBlank() }.distinct()) {
+            dao.transaction(id)?.let { found += it }
         }
+        val ordered = found
+            .sortedBy { if (it.type == "income" || it.type == "transfer_in") 1 else 0 }
+            .map { it.id }
+        for (id in ordered) deleteTransactionInternal(id)
     }
 
     suspend fun deleteTransaction(txId: String) = db.withTransaction {
@@ -151,8 +158,13 @@ class FinanceRepository(private val db: AppDatabase) {
                     "expense", "transfer_out" -> account.balance + item.amount
                     else -> account.balance
                 }
-                require(newBalance >= 0L || item.type == "income" || item.type == "transfer_in") {
-                    "Saldo rekening tidak valid setelah membatalkan transaksi"
+                // Menghapus pemasukan / transfer masuk MENGURANGI saldo. Kalau uangnya sudah
+                // terpakai, saldo akan minus -> tolak dengan pesan yang jelas.
+                require(newBalance >= 0L) {
+                    "${if (item.type == "transfer_in") "Transfer masuk" else "Pemasukan"} ${rupiahText(item.amount)} " +
+                        "tidak bisa dihapus: saldo ${account.name} " +
+                        "hanya ${rupiahText(account.balance)} (uangnya sudah terpakai). " +
+                        "Hapus dulu transaksi pengeluaran setelahnya atau tambah saldo."
                 }
                 dao.putAccount(account.copy(balance = newBalance))
             }
@@ -374,11 +386,9 @@ class FinanceRepository(private val db: AppDatabase) {
         require(account.balance >= amount + adminFee) { "Saldo rekening tidak cukup" }
         val txId = id()
         val now = System.currentTimeMillis()
-        // Biaya admin dipotong dari rekening, tetapi tidak menambah nilai aset.
         dao.putAccount(account.copy(balance = account.balance - amount - adminFee))
         dao.putInvestment(asset.copy(value = asset.value + amount))
         if (adminFee > 0) {
-            // Transaksi terpisah (tanpa investmentAssetId, ditautkan lewat feeAssetId); dikembalikan saat aset dihapus.
             dao.putTransaction(
                 TransactionEntity(
                     id(), "expense", adminFee, "Admin bank", accountId, now,
@@ -409,7 +419,6 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.putHolding(InvestmentHoldingEntity(id(), platformId, cleanName, type, cost, System.currentTimeMillis()))
     }
 
-    /** Menghapus aset: modalnya kembali menjadi saldo tersedia di platform. */
     suspend fun deleteHolding(holdingId: String) = db.withTransaction {
         dao.deleteHolding(holdingId)
     }
@@ -433,7 +442,6 @@ class FinanceRepository(private val db: AppDatabase) {
             )
         )
         if (adminFee > 0) {
-            // Fee dipotong dari dana yang diterima; ditautkan lewat feeAssetId, dikembalikan saat aset dihapus.
             dao.putAccount(account.copy(balance = account.balance + amount - adminFee))
             dao.putTransaction(
                 TransactionEntity(
@@ -468,7 +476,6 @@ class FinanceRepository(private val db: AppDatabase) {
             }
         }
 
-        // Biaya admin setor/tarik dikembalikan ke rekening yang dipilih pada transaksi masing-masing.
         dao.feeTransactionsForInvestment(assetId).groupBy { it.accountId }.forEach { (accountId, fees) ->
             val account = dao.account(accountId) ?: error("Rekening biaya admin tidak ditemukan")
             dao.putAccount(account.copy(balance = account.balance + fees.sumOf { it.amount }))
@@ -513,9 +520,23 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.deleteSchedule(scheduleId)
     }
 
+    data class SalaryRun(
+        val note: String,
+        val accountName: String,
+        val amount: Long,
+        val balanceAfter: Long,
+        val frequency: String
+    )
+
+    data class InvestmentRun(
+        val assetName: String,
+        val accountName: String,
+        val amount: Long
+    )
+
     data class ScheduleRunResult(
-        val investmentRuns: List<String>,
-        val salaryRuns: List<String>,
+        val investmentRuns: List<InvestmentRun>,
+        val salaryRuns: List<SalaryRun>,
         val failures: List<String> = emptyList()
     )
 
@@ -523,8 +544,8 @@ class FinanceRepository(private val db: AppDatabase) {
         now: Long = System.currentTimeMillis(),
         maxCatchupDays: Int = 30
     ): ScheduleRunResult {
-        val investmentRuns = mutableListOf<String>()
-        val salaryRuns = mutableListOf<String>()
+        val investmentRuns = mutableListOf<InvestmentRun>()
+        val salaryRuns = mutableListOf<SalaryRun>()
         val failures = mutableListOf<String>()
         val earliest = now - maxCatchupDays.coerceIn(1, 365) * 86_400_000L
 
@@ -571,7 +592,8 @@ class FinanceRepository(private val db: AppDatabase) {
 
                     val updated = dao.allSchedules().firstOrNull { it.id == schedule.id }
                     if (updated != null && updated.lastRunMillis == occurrenceAt) {
-                        investmentRuns += "${asset?.name ?: "Investasi"} · Rp${schedule.amount}"
+                        val from = dao.account(schedule.accountId)
+                        investmentRuns += InvestmentRun(asset?.name ?: "Investasi", from?.name ?: "Rekening", schedule.amount)
                         schedule = updated
                     } else {
                         schedule = updated ?: schedule
@@ -618,7 +640,13 @@ class FinanceRepository(private val db: AppDatabase) {
                     val updated = dao.allSalaries().firstOrNull { it.id == schedule.id }
                     if (inserted) {
                         val account = dao.account(schedule.accountId)
-                        salaryRuns += "${schedule.note.ifBlank { "Gaji" }} → ${account?.name ?: "Rekening"} · Rp${schedule.amount}"
+                        salaryRuns += SalaryRun(
+                            note = schedule.note.ifBlank { "Gaji" },
+                            accountName = account?.name ?: "Rekening",
+                            amount = schedule.amount,
+                            balanceAfter = account?.balance ?: 0L,
+                            frequency = schedule.frequency
+                        )
                     }
                     if (updated == null) break
                     schedule = updated
@@ -759,7 +787,6 @@ class FinanceRepository(private val db: AppDatabase) {
         )
     }
 
-    /** Bayar / terima sebagian (cicilan). Jika nominal == sisa, utang/piutang otomatis lunas. */
     suspend fun payDebt(debtId: String, accountId: String, amount: Long) = db.withTransaction {
         val debt = dao.allDebts().firstOrNull { it.id == debtId } ?: error("Data tidak ditemukan")
         require(!debt.isPaid && debt.remaining > 0L) { "Sudah ditandai lunas" }
@@ -804,7 +831,6 @@ class FinanceRepository(private val db: AppDatabase) {
     suspend fun markDebtPaid(debt: DebtEntity, accountId: String) =
         payDebt(debt.id, accountId, debt.remaining)
 
-    /** Batalkan cicilan terakhir. Kalau sebelumnya sudah lunas, status kembali belum lunas. */
     suspend fun markDebtUnpaid(debt: DebtEntity) = db.withTransaction {
         val current = dao.allDebts().firstOrNull { it.id == debt.id } ?: return@withTransaction
         require(current.paidAmount > 0L) { "Belum ada pembayaran" }
@@ -812,7 +838,6 @@ class FinanceRepository(private val db: AppDatabase) {
         if (last != null) {
             deleteTransactionInternal(last.id)
         } else {
-            // Data lama tanpa transaksi terkait: kembalikan saldo rekening secara manual.
             val account = current.paidAccountId?.let { dao.account(it) }
             if (account != null) {
                 val restored = if (current.type == "piutang") account.balance - current.paidAmount else account.balance + current.paidAmount
@@ -837,16 +862,29 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.deleteDebt(debtId)
     }
 
-    suspend fun exportJson(): String {
-        val data = BackupData(
-            dao.allAccounts(), dao.allTransactions(), dao.allBills(), dao.allInvestments(),
-            dao.allContributions(), dao.allDebts(), dao.allSchedules(), dao.allSalaries(),
-            dao.allHoldings()
+    /**
+     * Snapshot SEMUA tabel database dalam satu transaksi (konsisten).
+     * PENTING: setiap kali menambah tabel/entity baru, tambahkan juga di sini, di [BackupData],
+     * di [importJson] (clear + put) dan di [validateBackup]. Kalau lupa, datanya tidak ikut backup.
+     */
+    suspend fun snapshot(): BackupData = db.withTransaction {
+        BackupData(
+            accounts = dao.allAccounts(),
+            transactions = dao.allTransactions(),
+            bills = dao.allBills(),
+            investments = dao.allInvestments(),
+            contributions = dao.allContributions(),
+            debts = dao.allDebts(),
+            schedules = dao.allSchedules(),
+            salaries = dao.allSalaries(),
+            holdings = dao.allHoldings()
         )
-        return BackupCodec.encode(data)
     }
 
-    suspend fun importJson(json: String) = db.withTransaction {
+    suspend fun exportJson(): String = BackupCodec.encode(snapshot())
+
+    /** Mengembalikan data yang dibaca dari file, supaya pemanggil bisa ikut memulihkan pengaturan. */
+    suspend fun importJson(json: String): BackupData = db.withTransaction {
         val decoded = if (BackupCodec.isLegacySakuMe(json)) {
             BackupCodec.decodeLegacySakuMe(json)
         } else {
@@ -872,8 +910,8 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.putDebts(data.debts)
         dao.putSchedules(data.schedules)
         dao.putSalaries(data.salaries)
+        data
     }
-    /** Backup lama (sebelum fitur cicilan) hanya punya isPaid; ubah ke paidAmount + tautkan transaksi pelunasannya. */
     private fun normalizeDebts(data: BackupData): BackupData {
         val txs = data.transactions.toMutableList()
         val debts = data.debts.map { d ->

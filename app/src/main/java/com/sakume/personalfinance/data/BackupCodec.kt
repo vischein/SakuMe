@@ -22,10 +22,39 @@ import java.util.UUID
     val debts: List<DebtEntity>,
     val schedules: List<ScheduledInvestmentEntity> = emptyList(),
     val salaries: List<SalaryScheduleEntity> = emptyList(),
-    val holdings: List<InvestmentHoldingEntity> = emptyList()
+    val holdings: List<InvestmentHoldingEntity> = emptyList(),
+    /** Info file backup (versi format, waktu dibuat). Null pada backup lama. */
+    val meta: BackupMeta? = null,
+    /** Pengaturan aplikasi (nominal, notifikasi, pengingat tagihan, dst). Null pada backup lama. */
+    val settings: BackupSettings? = null
+)
+
+@Serializable data class BackupMeta(
+    val format: Int = BackupCodec.FORMAT_VERSION,
+    val createdAtMillis: Long = 0L,
+    val appVersion: String = "",
+    val source: String = "manual"
+)
+
+/**
+ * Semua pengaturan di SharedPreferences yang ikut dipulihkan.
+ * Nilai null / default berarti "tidak ada di file backup" -> pengaturan saat ini dibiarkan.
+ * Folder backup eksternal & hash backup sengaja TIDAK disertakan (spesifik perangkat).
+ */
+@Serializable data class BackupSettings(
+    val trailingZeros: Int? = null,
+    val notificationsEnabled: Boolean? = null,
+    val maxCatchupDays: Int? = null,
+    val billReminderEnabled: Boolean? = null,
+    val billReminderHour: Int? = null,
+    val billReminderEarlyDays: Int? = null,
+    val autoBackupEnabled: Boolean? = null,
+    val autoBackupKeep: Int? = null
 )
 object BackupCodec {
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+    /** Naikkan setiap kali struktur backup berubah. 1 = tanpa meta, 2 = meta + settings + holdings. */
+    const val FORMAT_VERSION = 2
+    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; encodeDefaults = true }
     fun encode(data: BackupData): String = json.encodeToString(data)
     fun decode(text: String): BackupData = json.decodeFromString(text)
 

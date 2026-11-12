@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.sakume.personalfinance.data.BackupCodec
+import com.sakume.personalfinance.data.BackupManager
 import com.sakume.personalfinance.data.HOLDING_TYPES
 import com.sakume.personalfinance.ui.components.AccountPickerDialog
 import com.sakume.personalfinance.ui.components.InvestmentTransferDialog
@@ -54,23 +55,23 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Muted
 
 @Composable
-fun FinanceApp(vm: FinanceViewModel) {
+fun FinanceApp(
+    vm: FinanceViewModel,
+    requestedTab: String? = null,
+    onTabHandled: () -> Unit = {}
+) {
     val accounts by vm.accounts.collectAsState()
     val transactions by vm.transactions.collectAsState()
     val bills by vm.bills.collectAsState()
@@ -87,13 +88,21 @@ fun FinanceApp(vm: FinanceViewModel) {
     var dialog by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var importResult by remember { mutableStateOf("") }
+    var backupRefresh by remember { mutableStateOf(0) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var unlocked by remember {
-        mutableStateOf(!AppPrefs.appLockEnabled(context))
+
+    LaunchedEffect(requestedTab) {
+        val t = requestedTab
+        if (t != null) {
+            if (t in setOf("Home", "Analisis", "Bills", "Invest", "More")) {
+                tab = t
+                subScreen = null
+                if (t == "Bills") billsProviderFilter = "Semua"
+            }
+            onTabHandled()
+        }
     }
-    var pinInput by remember { mutableStateOf("") }
-    var pinError by remember { mutableStateOf("") }
 
     BackHandler(enabled = subScreen != null || tab != "Home") {
         when {
@@ -131,20 +140,18 @@ fun FinanceApp(vm: FinanceViewModel) {
         if (Build.VERSION.SDK_INT >= 33) {
             notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        vm.processDueSchedules { result ->
-            if (result.investmentRuns.isNotEmpty()) {
-                Notify.investmentSuccess(
-                    context,
-                    result.investmentRuns.joinToString("\n") { "$it" }
-                )
-            }
-            if (result.salaryRuns.isNotEmpty()) {
-                Notify.salarySuccess(
-                    context,
-                    result.salaryRuns.joinToString("\n") { "$it" }
-                )
-            }
-        }
+        vm.processDueSchedules { result -> Notify.scheduleResult(context, result) }
+    }
+
+    fun restoreFromText(text: String, legacy: Boolean) {
+        vm.importJson(
+            json = text,
+            onDone = { note ->
+                backupRefresh++
+                importResult = (if (legacy) "Data lama berhasil diimpor. " else "Backup berhasil dipulihkan. ") + note
+            },
+            error = { err -> importResult = "Gagal mengimpor: $err" }
+        )
     }
 
     val importLauncher = rememberLauncherForActivityResult(
@@ -153,81 +160,39 @@ fun FinanceApp(vm: FinanceViewModel) {
         if (uri != null) scope.launch {
             try {
                 val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
-                val legacy = BackupCodec.isLegacySakuMe(text)
-                vm.importJson(
-                    json = text,
-                    onDone = { path ->
-                        importResult = if (legacy) {
-                            "Data lama berhasil diimpor. Backup otomatis sebelum impor tersimpan di $path"
-                        } else {
-                            "Backup berhasil dipulihkan. Backup otomatis sebelum impor tersimpan di $path"
-                        }
-                    },
-                    error = { err -> importResult = "Gagal mengimpor: $err" }
-                )
+                restoreFromText(text, BackupCodec.isLegacySakuMe(text))
             } catch (e: Exception) {
                 importResult = "Gagal membaca file: ${e.message}"
             }
         }
     }
 
-    SakuMeTheme {
-        if (!unlocked) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Paper)
-                    .padding(28.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("SakuMe", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Ink)
-                    Text("Masukkan PIN untuk membuka", color = Muted, fontSize = 14.sp)
-                    OutlinedTextField(
-                        value = pinInput,
-                        onValueChange = {
-                            if (it.length <= 6 && it.all(Char::isDigit)) {
-                                pinInput = it
-                                pinError = ""
-                            }
-                        },
-                        label = { Text("PIN") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    if (pinError.isNotEmpty()) {
-                        Text(pinError, color = Color(0xFFD32F2F), fontSize = 13.sp)
-                    }
-                    Button(
-                        onClick = {
-                            if (AppPrefs.verifyPin(context, pinInput)) {
-                                unlocked = true
-                                pinInput = ""
-                                pinError = ""
-                            } else {
-                                pinError = "PIN salah"
-                                pinInput = ""
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Ink),
-                        enabled = pinInput.length in 4..6
-                    ) {
-                        Text("Buka")
+    val folderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                AppPrefs.setAutoBackupFolder(context, uri.toString())
+                scope.launch {
+                    val r = BackupManager.runBackup(context, force = true, source = "manual")
+                    backupRefresh++
+                    importResult = when {
+                        r.status == BackupManager.Status.FAILED -> "Folder dipilih, tetapi backup gagal: ${r.message}"
+                        r.folderError != null -> r.folderError ?: ""
+                        else -> "Folder dipilih. Backup tersalin ke folder tersebut."
                     }
                 }
+            } catch (e: Exception) {
+                importResult = "Folder tidak bisa dipakai: ${e.message}"
             }
-            return@SakuMeTheme
         }
+    }
 
+    SakuMeTheme {
         Scaffold(
             containerColor = Paper,
             bottomBar = {
@@ -265,14 +230,46 @@ fun FinanceApp(vm: FinanceViewModel) {
                         )
                     } else if (subScreen == "backup") {
                         BackupScreen(
+                            refreshKey = backupRefresh,
                             onBack = { subScreen = null; historyAccountId = null },
                             onExport = { shareBackup() },
                             onImport = { importLauncher.launch(arrayOf("application/json", "text/plain", "text/*", "*/*")) },
-                            onRecalculate = {
-                                vm.recalculateBalances(
-                                    onDone = { importResult = "Saldo berhasil dihitung ulang dari transaksi." },
-                                    error = { importResult = "Gagal: $it" }
-                                )
+                            onBackupNow = {
+                                vm.backupNow { r ->
+                                    backupRefresh++
+                                    importResult = when (r.status) {
+                                        BackupManager.Status.SAVED ->
+                                            if (r.folderError != null) "Backup tersimpan di app, tetapi folder gagal: ${r.folderError}"
+                                            else "Backup berhasil disimpan."
+                                        BackupManager.Status.SKIPPED -> r.message
+                                        BackupManager.Status.FAILED -> "Backup gagal: ${r.message}"
+                                    }
+                                }
+                            },
+                            onPickFolder = { folderLauncher.launch(null) },
+                            onClearFolder = {
+                                AppPrefs.setAutoBackupFolder(context, null)
+                                backupRefresh++
+                            },
+                            onRestore = { entry ->
+                                scope.launch {
+                                    try {
+                                        val text = BackupManager.readText(context, entry)
+                                        restoreFromText(text, BackupCodec.isLegacySakuMe(text))
+                                    } catch (e: Exception) {
+                                        importResult = "Gagal membaca backup: ${e.message}"
+                                    }
+                                }
+                            },
+                            onDeleteEntry = { entry ->
+                                scope.launch {
+                                    try {
+                                        BackupManager.delete(context, entry)
+                                    } catch (e: Exception) {
+                                        importResult = "Gagal menghapus: ${e.message}"
+                                    }
+                                    backupRefresh++
+                                }
                             }
                         )
                     } else if (subScreen == "manageAccounts") {

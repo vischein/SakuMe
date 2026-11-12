@@ -16,31 +16,15 @@ class ScheduleWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): ListenableWorker.Result {
+        // Pengingat tagihan berdiri sendiri: gagalnya proses jadwal tidak boleh membuatnya tidak jalan.
+        runCatching { BillReminder.check(applicationContext) }
         return try {
             val db = AppDatabase.get(applicationContext)
             val repo = FinanceRepository(db)
             val days = com.sakume.personalfinance.ui.AppPrefs.maxCatchupDays(applicationContext)
             val result = repo.processDueSchedules(maxCatchupDays = days)
 
-            val notify = com.sakume.personalfinance.ui.AppPrefs.notificationsEnabled(applicationContext)
-            if (notify && result.investmentRuns.isNotEmpty()) {
-                Notify.investmentSuccess(
-                    applicationContext,
-                    result.investmentRuns.joinToString("\n") { "• $it" }
-                )
-            }
-            if (notify && result.salaryRuns.isNotEmpty()) {
-                Notify.salarySuccess(
-                    applicationContext,
-                    result.salaryRuns.joinToString("\n") { "• $it" }
-                )
-            }
-            if (notify && result.failures.isNotEmpty()) {
-                Notify.scheduleFailure(
-                    applicationContext,
-                    result.failures.joinToString("\n") { "• $it" }
-                )
-            }
+            Notify.scheduleResult(applicationContext, result)
             ListenableWorker.Result.success()
         } catch (e: IllegalArgumentException) {
             ListenableWorker.Result.success()

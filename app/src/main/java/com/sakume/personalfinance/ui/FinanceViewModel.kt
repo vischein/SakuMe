@@ -153,19 +153,28 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
     fun markDebtUnpaid(debt: DebtEntity, error: (String) -> Unit = {}) =
         run({ markDebtUnpaid(debt) }, error)
 
-    suspend fun exportJson() = repo.exportJson()
+    suspend fun exportJson() = BackupManager.buildFullJson(getApplication())
 
+    /**
+     * Impor / restore. Sebelum data diganti, kondisi saat ini disimpan otomatis ke daftar backup
+     * (tipe "Sebelum impor") sehingga restore bisa dibatalkan. Pengaturan di file ikut dipulihkan.
+     */
     fun importJson(json: String, onDone: (String) -> Unit = {}, error: (String) -> Unit = {}) {
         viewModelScope.launch {
             try {
-                val backup = repo.exportJson()
-                val backupFile = java.io.File(getApplication<Application>().filesDir, "sakume_before_import.json")
-                backupFile.writeText(backup)
-                repo.importJson(json)
-                onDone(backupFile.absolutePath)
+                val app = getApplication<Application>()
+                BackupManager.savePreImport(app, repo.exportJson())
+                val imported = repo.importJson(json)
+                BackupManager.applySettings(app, imported.settings)
+                onDone("Kondisi sebelum impor tersimpan di daftar backup (\"Sebelum impor\").")
             } catch (e: Exception) {
                 error(e.message ?: "Gagal mengimpor backup")
             }
         }
+    }
+
+    /** Tombol "Backup sekarang": selalu menulis file, tanpa melihat saklar otomatis. */
+    fun backupNow(onDone: (BackupManager.Outcome) -> Unit) {
+        viewModelScope.launch { onDone(BackupManager.runBackup(getApplication(), force = true, source = "manual")) }
     }
 }

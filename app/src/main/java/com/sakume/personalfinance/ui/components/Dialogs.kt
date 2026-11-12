@@ -936,3 +936,26 @@ fun MessageDialog(title: String, message: String, onDismiss: () -> Unit) {
         SheetButton("OK", onDismiss, Modifier.fillMaxWidth(), primary = true)
     }
 }
+
+@Composable
+fun RestoreBackupDialog(
+    title: String,
+    detail: String,
+    canRestore: Boolean,
+    onRestore: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AppBottomSheet(onDismiss) {
+        Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Ink)
+        Spacer(Modifier.height(8.dp))
+        Text(detail, color = Muted, fontSize = 14.sp)
+        Spacer(Modifier.height(16.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SheetButton("Batal", onDismiss, Modifier.weight(1f), primary = false)
+            SheetButton("Pulihkan", onRestore, Modifier.weight(1f), primary = true, destructive = true, enabled = canRestore)
+        }
+        Spacer(Modifier.height(8.dp))
+        SheetButton("Hapus file backup ini", onDelete, Modifier.fillMaxWidth(), primary = false)
+    }
+}
