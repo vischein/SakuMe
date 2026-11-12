@@ -23,7 +23,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.sakume.personalfinance.data.BackupCodec
+import com.sakume.personalfinance.data.HOLDING_TYPES
 import com.sakume.personalfinance.ui.components.AccountPickerDialog
+import com.sakume.personalfinance.ui.components.InvestmentTransferDialog
+import com.sakume.personalfinance.ui.components.WeeklyScheduleDialog
 import com.sakume.personalfinance.ui.components.CashTransferDialog
 import com.sakume.personalfinance.ui.components.ConfirmDialog
 import com.sakume.personalfinance.ui.components.DebtPaymentDialog
@@ -72,6 +75,7 @@ fun FinanceApp(vm: FinanceViewModel) {
     val transactions by vm.transactions.collectAsState()
     val bills by vm.bills.collectAsState()
     val investments by vm.investments.collectAsState()
+    val holdings by vm.holdings.collectAsState()
     val debts by vm.debts.collectAsState()
     val schedules by vm.schedules.collectAsState()
     val salaries by vm.salaries.collectAsState()
@@ -351,7 +355,10 @@ fun FinanceApp(vm: FinanceViewModel) {
                             items = investments,
                             accounts = accounts,
                             schedules = schedules,
+                            holdings = holdings,
                             onAdd = { dialog = "investment" },
+                            onAddHolding = { a -> dialog = "addholding:${a.id}" },
+                            onDeleteHolding = { h -> dialog = "delholding:${h.id}" },
                             onContribute = { a -> dialog = "contribute:${a.id}" },
                             onWithdraw = { a -> dialog = "withdraw:${a.id}" },
                             onSchedule = { a -> dialog = "schedule:${a.id}" },
@@ -413,7 +420,9 @@ fun FinanceApp(vm: FinanceViewModel) {
                 optionLabel = "Jenis",
                 optionDisplay = { if (it == "expense") "Pengeluaran" else "Pemasukan" },
                 extraOptions = accounts.map { it.name },
+                extraOptionSecondary = { n -> accounts.firstOrNull { it.name == n }?.let { rupiah(it.balance) } },
                 extraOptionLabel = "Rekening",
+                requiredFields = setOf(1),
                 onDismiss = { dialog = "" }
             ) { v ->
                 val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
@@ -443,8 +452,10 @@ fun FinanceApp(vm: FinanceViewModel) {
                 title = "Transfer saldo",
                 fields = listOf("Nominal", "Catatan (opsional)"),
                 options = accounts.map { it.name },
+                optionSecondary = { n -> accounts.firstOrNull { it.name == n }?.let { rupiah(it.balance) } },
                 optionLabel = "Dari rekening",
                 extraOptions = accounts.map { it.name },
+                extraOptionSecondary = { n -> accounts.firstOrNull { it.name == n }?.let { rupiah(it.balance) } },
                 extraOptionLabel = "Ke rekening",
                 onDismiss = { dialog = "" }
             ) { v ->
@@ -485,6 +496,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                 fieldSuggestions = mapOf(
                     0 to bills.map { it.provider }.distinct().sorted()
                 ),
+                requiredFields = setOf(1),
                 includeDueDate = true,
                 dueDateLabel = "Mulai / jatuh tempo pertama",
                 onDismiss = { dialog = "" }
@@ -540,8 +552,8 @@ fun FinanceApp(vm: FinanceViewModel) {
             )
 
             dialog == "investment" -> FormDialog(
-                title = "Aset investasi",
-                fields = listOf("Nama aset", "Target (opsional)"),
+                title = "Platform investasi",
+                fields = listOf("Nama platform (mis. Pluang, Bybit)", "Target (opsional)"),
                 options = emptyList(),
                 onDismiss = { dialog = "" }
             ) { v ->
@@ -558,8 +570,8 @@ fun FinanceApp(vm: FinanceViewModel) {
                     dialog = ""
                 } else {
                     FormDialog(
-                        title = "Edit aset",
-                        fields = listOf("Nama aset", "Target (opsional)"),
+                        title = "Edit platform",
+                        fields = listOf("Nama platform", "Target (opsional)"),
                         options = emptyList(),
                         initialValues = listOf(
                             asset.name,
@@ -582,33 +594,13 @@ fun FinanceApp(vm: FinanceViewModel) {
 
             dialog.startsWith("schedule:") -> {
                 val asset = investments.firstOrNull { it.id == dialog.substringAfter(":") }
-                FormDialog(
+                WeeklyScheduleDialog(
                     title = "Jadwal setor mingguan",
-                    fields = listOf("Nominal per minggu"),
-                    options = listOf("2", "3", "4", "5", "6", "7", "1"),
-                    optionLabel = "Hari (Senin–Minggu)",
-                    optionDisplay = {
-                        when (it) {
-                            "1" -> "Minggu"
-                            "2" -> "Senin"
-                            "3" -> "Selasa"
-                            "4" -> "Rabu"
-                            "5" -> "Kamis"
-                            "6" -> "Jumat"
-                            "7" -> "Sabtu"
-                            else -> it
-                        }
-                    },
-                    extraOptions = accounts.map { it.name },
-                    extraOptionLabel = "Dari rekening",
+                    accounts = accounts,
                     onDismiss = { dialog = "" }
-                ) { v ->
-                    val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
-                    val day = v.getOrElse(1) { "2" }.toIntOrNull() ?: 2
-                    val acc = accounts.firstOrNull { it.name == v.getOrElse(2) { "" } }
+                ) { acc, amount, day ->
                     when {
                         asset == null -> error = "Aset tidak ditemukan"
-                        acc == null -> error = "Pilih rekening"
                         amount <= 0 -> error = "Nominal harus lebih dari nol"
                         else -> {
                             vm.addSchedule(asset.id, acc.id, amount, day) { error = it }
@@ -620,24 +612,20 @@ fun FinanceApp(vm: FinanceViewModel) {
 
             dialog.startsWith("withdraw:") -> {
                 val asset = investments.firstOrNull { it.id == dialog.substringAfter(":") }
-                FormDialog(
+                val available = asset?.let { a ->
+                    a.value - holdings.filter { it.platformId == a.id }.sumOf { it.cost }
+                } ?: 0L
+                InvestmentTransferDialog(
                     title = "Tarik investasi",
-                    fields = listOf("Nominal", "Biaya admin (opsional)"),
-                    moneyFields = setOf(1),
-                    manualMoneyFields = setOf(1),
-                    options = accounts.map { it.name },
-                    optionLabel = "Ke rekening",
+                    accountLabel = "Ke rekening",
+                    accounts = accounts,
+                    infoText = "Saldo tersedia di platform: ${rupiah(available)}",
                     onDismiss = { dialog = "" }
-                ) { v ->
-                    val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
-                    // Biaya admin manual penuh (tanpa pengali nol otomatis).
-                    val adminFee = v[1].filter { it.isDigit() }.toLongOrNull() ?: 0L
-                    val acc = accounts.firstOrNull { it.name == v.getOrElse(2) { "" } }
+                ) { acc, amount, adminFee ->
                     when {
                         asset == null -> error = "Aset tidak ditemukan"
-                        acc == null -> error = "Pilih rekening"
                         amount <= 0 -> error = "Nominal harus lebih dari nol"
-                        amount > asset.value -> error = "Maksimal ${asset.value}"
+                        amount > available -> error = "Maksimal $available"
                         adminFee > amount -> error = "Biaya admin melebihi nominal tarik"
                         else -> {
                             vm.withdraw(asset.id, acc.id, amount, adminFee) { error = it }
@@ -649,22 +637,14 @@ fun FinanceApp(vm: FinanceViewModel) {
 
             dialog.startsWith("contribute:") -> {
                 val asset = investments.firstOrNull { it.id == dialog.substringAfter(":") }
-                FormDialog(
+                InvestmentTransferDialog(
                     title = "Setor investasi",
-                    fields = listOf("Nominal", "Biaya admin topup (opsional)"),
-                    moneyFields = setOf(1),
-                    manualMoneyFields = setOf(1),
-                    options = accounts.map { it.name },
-                    optionLabel = "Dari rekening",
+                    accountLabel = "Dari rekening",
+                    accounts = accounts,
                     onDismiss = { dialog = "" }
-                ) { v ->
-                    val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
-                    // Biaya admin diinput manual penuh (tanpa pengali nol otomatis).
-                    val adminFee = v[1].filter { it.isDigit() }.toLongOrNull() ?: 0L
-                    val acc = accounts.firstOrNull { it.name == v.getOrElse(2) { "" } }
+                ) { acc, amount, adminFee ->
                     when {
                         asset == null -> error = "Aset tidak ditemukan"
-                        acc == null -> error = "Pilih rekening"
                         amount <= 0 -> error = "Nominal harus lebih dari nol"
                         acc.balance < amount + adminFee -> error = "Saldo rekening tidak cukup"
                         else -> {
@@ -673,6 +653,43 @@ fun FinanceApp(vm: FinanceViewModel) {
                         }
                     }
                 }
+            }
+
+            dialog.startsWith("addholding:") -> {
+                val platform = investments.firstOrNull { it.id == dialog.substringAfter(":") }
+                FormDialog(
+                    title = "Tambah aset" + (platform?.let { " di ${it.name}" } ?: ""),
+                    fields = listOf("Nama aset (mis. BTC, VOO, AAPL)", "Modal"),
+                    moneyFields = setOf(1),
+                    manualMoneyFields = setOf(1),
+                    options = HOLDING_TYPES,
+                    optionLabel = "Jenis",
+                    onDismiss = { dialog = "" }
+                ) { v ->
+                    val cost = v[1].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                    when {
+                        platform == null -> error = "Platform tidak ditemukan"
+                        v[0].isBlank() -> error = "Nama aset wajib diisi"
+                        cost <= 0 -> error = "Nominal harus lebih dari nol"
+                        else -> {
+                            vm.addHolding(platform.id, v[0], v[2], cost) { error = it }
+                            dialog = ""
+                        }
+                    }
+                }
+            }
+
+            dialog.startsWith("delholding:") -> {
+                val holding = holdings.firstOrNull { it.id == dialog.substringAfter(":") }
+                ConfirmDialog(
+                    title = if (holding == null) "Hapus aset?"
+                    else "Hapus aset \"${holding.name}\"? Modal ${rupiah(holding.cost)} kembali menjadi saldo tersedia di platform.",
+                    confirm = {
+                        holding?.let { vm.deleteHolding(it.id) }
+                        dialog = ""
+                    },
+                    cancel = { dialog = "" }
+                )
             }
 
             dialog.startsWith("deleteinvest:") -> ConfirmDialog(
@@ -711,6 +728,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                     }
                 },
                 extraOptions = accounts.map { it.name },
+                extraOptionSecondary = { n -> accounts.firstOrNull { it.name == n }?.let { rupiah(it.balance) } },
                 extraOptionLabel = "Ke rekening",
                 tertiaryOptions = listOf("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23"),
                 tertiaryOptionLabel = "Jam masuk",
@@ -748,6 +766,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                         }
                     },
                     extraOptions = accounts.map { it.name },
+                    extraOptionSecondary = { n -> accounts.firstOrNull { it.name == n }?.let { rupiah(it.balance) } },
                     extraOptionLabel = "Ke rekening",
                     tertiaryOptions = listOf("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23"),
                     tertiaryOptionLabel = "Jam masuk",

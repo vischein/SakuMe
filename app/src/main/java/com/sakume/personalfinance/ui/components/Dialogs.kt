@@ -23,8 +23,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -40,6 +38,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -57,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.data.AccountEntity
 import com.sakume.personalfinance.ui.AppPrefs
 import com.sakume.personalfinance.ui.rupiah
+import com.sakume.personalfinance.ui.theme.Accent
 import com.sakume.personalfinance.ui.theme.CardBg
 import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Muted
@@ -275,12 +278,16 @@ fun FormDialog(
     tertiaryOptions: List<String> = emptyList(),
     tertiaryOptionLabel: String = "Pilihan lain",
     tertiaryDisplay: (String) -> String = { it },
+    optionSecondary: (String) -> String? = { null },
+    extraOptionSecondary: (String) -> String? = { null },
+    tertiaryOptionSecondary: (String) -> String? = { null },
     initialOptionIndex: Int = 0,
     initialExtraIndex: Int = 0,
     initialTertiaryIndex: Int = 0,
     moneyFields: Set<Int> = emptySet(),
     manualMoneyFields: Set<Int> = emptySet(),
     fieldSuggestions: Map<Int, List<String>> = emptyMap(),
+    requiredFields: Set<Int> = emptySet(),
     includeDueDate: Boolean = false,
     dueDateLabel: String = "Tanggal jatuh tempo",
     initialValues: List<String> = emptyList(),
@@ -298,9 +305,6 @@ fun FormDialog(
         val def = if (tertiaryOptions.isEmpty()) 0 else initialTertiaryIndex.coerceIn(0, tertiaryOptions.lastIndex)
         mutableIntStateOf(def)
     }
-    var expanded by remember { mutableStateOf(false) }
-    var expandedExtra by remember { mutableStateOf(false) }
-    var expandedTertiary by remember { mutableStateOf(false) }
     var expandedSuggestion by remember { mutableStateOf(-1) }
     var dueDateMillis by remember(title) {
         val cal = Calendar.getInstance().apply {
@@ -431,79 +435,16 @@ fun FormDialog(
                         }
                     }
                 } else {
-                    Box {
-                        Text(
-                            text = optionDisplay(options.getOrElse(selectedOpt) { options.first() }),
-                            color = Ink,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(FieldBg)
-                                .clickable { expanded = true }
-                                .padding(horizontal = 16.dp, vertical = 14.dp)
-                        )
-                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = CardBg) {
-                            options.forEachIndexed { i, opt ->
-                                DropdownMenuItem(
-                                    text = { Text(optionDisplay(opt), color = Ink) },
-                                    onClick = { selectedOpt = i; expanded = false },
-                                    colors = MenuDefaults.itemColors(textColor = Ink)
-                                )
-                            }
-                        }
-                    }
+                    OptionCardList(options, selectedOpt, optionDisplay, optionSecondary) { selectedOpt = it }
                 }
             }
             if (extraOptions.isNotEmpty()) {
                 Text(extraOptionLabel, color = Muted, fontSize = 12.sp)
-                Box {
-                    Text(
-                        text = extraOptions.getOrElse(selectedExtra) { extraOptions.firstOrNull().orEmpty() },
-                        color = Ink,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(FieldBg)
-                            .clickable { expandedExtra = true }
-                            .padding(horizontal = 16.dp, vertical = 14.dp)
-                    )
-                    DropdownMenu(expanded = expandedExtra, onDismissRequest = { expandedExtra = false }, containerColor = CardBg) {
-                        extraOptions.forEachIndexed { i, opt ->
-                            DropdownMenuItem(
-                                text = { Text(opt, color = Ink) },
-                                onClick = { selectedExtra = i; expandedExtra = false },
-                                colors = MenuDefaults.itemColors(textColor = Ink)
-                            )
-                        }
-                    }
-                }
+                OptionCardList(extraOptions, selectedExtra, secondary = extraOptionSecondary) { selectedExtra = it }
             }
             if (tertiaryOptions.isNotEmpty()) {
                 Text(tertiaryOptionLabel, color = Muted, fontSize = 12.sp)
-                Box {
-                    Text(
-                        text = tertiaryDisplay(tertiaryOptions.getOrElse(selectedTertiary) { tertiaryOptions.first() }),
-                        color = Ink,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(FieldBg)
-                            .clickable { expandedTertiary = true }
-                            .padding(horizontal = 16.dp, vertical = 14.dp)
-                    )
-                    DropdownMenu(expanded = expandedTertiary, onDismissRequest = { expandedTertiary = false }, containerColor = CardBg) {
-                        tertiaryOptions.forEachIndexed { i, opt ->
-                            DropdownMenuItem(
-                                text = { Text(tertiaryDisplay(opt), color = Ink) },
-                                onClick = { selectedTertiary = i; expandedTertiary = false },
-                                colors = MenuDefaults.itemColors(textColor = Ink)
-                            )
-                        }
-                    }
-                }
+                OptionCardList(tertiaryOptions, selectedTertiary, tertiaryDisplay, tertiaryOptionSecondary) { selectedTertiary = it }
             }
         }
         Spacer(Modifier.height(18.dp))
@@ -516,7 +457,8 @@ fun FormDialog(
                 if (extraOptions.isNotEmpty()) result.add(extraOptions.getOrElse(selectedExtra) { extraOptions.first() })
                 if (tertiaryOptions.isNotEmpty()) result.add(tertiaryOptions.getOrElse(selectedTertiary) { tertiaryOptions.first() })
                 onSave(result)
-            }, Modifier.weight(1f), primary = true)
+            }, Modifier.weight(1f), primary = true,
+                enabled = requiredFields.all { values[it].isNotBlank() })
         }
     }
 }
@@ -536,8 +478,6 @@ fun CashTransferDialog(
     var isWithdraw by remember { mutableStateOf(initialWithdraw) }
     var otherSelected by remember { mutableStateOf(otherAccounts.firstOrNull()?.id ?: "") }
     var cashSelected by remember { mutableStateOf(cashAccounts.firstOrNull()?.id ?: "") }
-    var expandedOther by remember { mutableStateOf(false) }
-    var expandedCash by remember { mutableStateOf(false) }
     var amountDigits by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
 
@@ -569,66 +509,23 @@ fun CashTransferDialog(
                     isMoney = true,
                     autoThousand = true
                 )
+                SheetField(value = note, onValueChange = { note = it }, label = "Catatan (opsional)")
+
+                val cashName = { a: AccountEntity -> if (isCash(a)) "Cash" else a.name }
 
                 Text(if (isWithdraw) "Dari rekening" else "Dari Cash", color = Muted, fontSize = 12.sp)
-                Box {
-                    val fromLabel = if (isWithdraw) (otherAccount?.name ?: "Pilih rekening") else (cashAccount?.let { if (isCash(it)) "Cash" else it.name } ?: "Pilih Cash")
-                    Text(
-                        text = fromLabel,
-                        color = Ink,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(FieldBg)
-                            .clickable { if (isWithdraw) expandedOther = true else expandedCash = true }
-                            .padding(horizontal = 16.dp, vertical = 14.dp)
-                    )
-                    DropdownMenu(expanded = if (isWithdraw) expandedOther else expandedCash, onDismissRequest = { expandedOther = false; expandedCash = false }, containerColor = CardBg) {
-                        val list = if (isWithdraw) otherAccounts else cashAccounts
-                        list.forEach { a ->
-                            DropdownMenuItem(
-                                text = { Text("${if (isCash(a)) "Cash" else a.name} · ${rupiah(a.balance)}", color = Ink) },
-                                onClick = {
-                                    if (isWithdraw) { otherSelected = a.id; expandedOther = false }
-                                    else { cashSelected = a.id; expandedCash = false }
-                                },
-                                colors = MenuDefaults.itemColors(textColor = Ink)
-                            )
-                        }
-                    }
+                if (isWithdraw) {
+                    AccountCardList(otherAccounts, otherAccount?.id ?: "", cashName) { otherSelected = it }
+                } else {
+                    AccountCardList(cashAccounts, cashAccount?.id ?: "", cashName) { cashSelected = it }
                 }
 
                 Text(if (isWithdraw) "Ke Cash" else "Ke rekening", color = Muted, fontSize = 12.sp)
-                Box {
-                    val toLabel = if (isWithdraw) (cashAccount?.let { if (isCash(it)) "Cash" else it.name } ?: "Pilih Cash") else (otherAccount?.name ?: "Pilih rekening")
-                    Text(
-                        text = toLabel,
-                        color = Ink,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(FieldBg)
-                            .clickable { if (isWithdraw) expandedCash = true else expandedOther = true }
-                            .padding(horizontal = 16.dp, vertical = 14.dp)
-                    )
-                    DropdownMenu(expanded = if (isWithdraw) expandedCash else expandedOther, onDismissRequest = { expandedOther = false; expandedCash = false }, containerColor = CardBg) {
-                        val list = if (isWithdraw) cashAccounts else otherAccounts
-                        list.forEach { a ->
-                            DropdownMenuItem(
-                                text = { Text("${if (isCash(a)) "Cash" else a.name} · ${rupiah(a.balance)}", color = Ink) },
-                                onClick = {
-                                    if (isWithdraw) { cashSelected = a.id; expandedCash = false }
-                                    else { otherSelected = a.id; expandedOther = false }
-                                },
-                                colors = MenuDefaults.itemColors(textColor = Ink)
-                            )
-                        }
-                    }
+                if (isWithdraw) {
+                    AccountCardList(cashAccounts, cashAccount?.id ?: "", cashName) { cashSelected = it }
+                } else {
+                    AccountCardList(otherAccounts, otherAccount?.id ?: "", cashName) { otherSelected = it }
                 }
-
-                SheetField(value = note, onValueChange = { note = it }, label = "Catatan (opsional)")
             }
         }
 
@@ -655,6 +552,269 @@ fun CashTransferDialog(
 }
 
 @Composable
+private fun OptionCard(
+    primary: String,
+    secondary: String?,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(10.dp)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CardBg)
+            .then(if (selected) Modifier.border(1.5.dp, Ink, shape) else Modifier)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            primary,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = Ink,
+            fontSize = 14.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        if (secondary != null) {
+            Spacer(Modifier.width(8.dp))
+            Text(secondary, color = Muted, fontSize = 12.sp, maxLines = 1)
+        }
+    }
+}
+
+
+@Composable
+private fun CardPickerField(
+    count: Int,
+    selectedIndex: Int,
+    primary: (Int) -> String,
+    secondary: (Int) -> String? = { null },
+    onSelect: (Int) -> Unit
+) {
+    var open by remember { mutableStateOf(false) }
+    var fieldWidthPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val hasSelection = selectedIndex in 0 until count
+    Box(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(FieldBg)
+                .onSizeChanged { fieldWidthPx = it.width }
+                .clickable(enabled = count > 0) { open = true }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                if (hasSelection) primary(selectedIndex) else if (count == 0) "Belum ada pilihan" else "Pilih",
+                color = if (hasSelection) Ink else Muted,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (hasSelection) {
+                secondary(selectedIndex)?.let {
+                    Spacer(Modifier.width(8.dp))
+                    Text(it, color = Muted, fontSize = 12.sp, maxLines = 1)
+                }
+            }
+            
+        }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            modifier = Modifier
+                .width(with(density) { fieldWidthPx.toDp() })
+                .heightIn(max = 280.dp),
+            offset = DpOffset(0.dp, 4.dp),
+            shape = RoundedCornerShape(14.dp),
+            containerColor = Paper,
+            tonalElevation = 0.dp,
+            shadowElevation = 6.dp
+        ) {
+            Column(
+                Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                for (i in 0 until count) {
+                    OptionCard(
+                        primary = primary(i),
+                        secondary = secondary(i),
+                        selected = selectedIndex == i,
+                        onClick = { onSelect(i) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OptionCardList(
+    options: List<String>,
+    selectedIndex: Int,
+    display: (String) -> String = { it },
+    secondary: (String) -> String? = { null },
+    onSelect: (Int) -> Unit
+) {
+    CardPickerField(
+        count = options.size,
+        selectedIndex = selectedIndex,
+        primary = { display(options[it]) },
+        secondary = { secondary(options[it]) },
+        onSelect = onSelect
+    )
+}
+
+@Composable
+private fun AccountCardList(
+    accounts: List<AccountEntity>,
+    selectedId: String,
+    nameOf: (AccountEntity) -> String = { it.name },
+    onSelect: (String) -> Unit
+) {
+    CardPickerField(
+        count = accounts.size,
+        selectedIndex = accounts.indexOfFirst { it.id == selectedId },
+        primary = { nameOf(accounts[it]) },
+        secondary = { rupiah(accounts[it].balance) },
+        onSelect = { onSelect(accounts[it].id) }
+    )
+}
+
+private val scheduleDays = listOf(
+    2 to "Senin", 3 to "Selasa", 4 to "Rabu", 5 to "Kamis", 6 to "Jumat", 7 to "Sabtu", 1 to "Minggu"
+)
+
+@Composable
+fun WeeklyScheduleDialog(
+    title: String,
+    accounts: List<AccountEntity>,
+    onDismiss: () -> Unit,
+    onConfirm: (account: AccountEntity, amount: Long, dayOfWeek: Int) -> Unit
+) {
+    val context = LocalContext.current
+    var amountDigits by remember { mutableStateOf("") }
+    var day by remember { mutableIntStateOf(2) }
+    var selected by remember { mutableStateOf(accounts.firstOrNull()?.id ?: "") }
+
+    AppBottomSheet(onDismiss) {
+        Text(title, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Ink)
+        Spacer(Modifier.height(14.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SheetField(
+                value = amountDigits,
+                onValueChange = { amountDigits = it },
+                label = "Nominal per minggu",
+                isMoney = true,
+                autoThousand = true
+            )
+            Text("Hari (Senin–Minggu)", color = Muted, fontSize = 12.sp)
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(scheduleDays.size) { i ->
+                    val (value, name) = scheduleDays[i]
+                    SelectableChip(label = name, selected = day == value, onClick = { day = value })
+                }
+            }
+            Text("Dari rekening", color = Muted, fontSize = 12.sp)
+            AccountCardList(accounts, selected) { selected = it }
+        }
+        Spacer(Modifier.height(16.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SheetButton("Batal", onDismiss, Modifier.weight(1f), primary = false)
+            SheetButton(
+                "Simpan",
+                {
+                    val account = accounts.firstOrNull { it.id == selected }
+                    if (account != null) {
+                        val amount = (amountDigits.toLongOrNull() ?: 0L) *
+                            AppPrefs.multiplier(AppPrefs.trailingZeros(context))
+                        onConfirm(account, amount, day)
+                    }
+                },
+                Modifier.weight(1f),
+                primary = true,
+                enabled = accounts.isNotEmpty()
+            )
+        }
+    }
+}
+
+@Composable
+fun InvestmentTransferDialog(
+    title: String,
+    accountLabel: String,
+    accounts: List<AccountEntity>,
+    infoText: String? = null,
+    amountLabel: String = "Nominal",
+    feeLabel: String = "Biaya Admin",
+    onDismiss: () -> Unit,
+    onConfirm: (account: AccountEntity, amount: Long, adminFee: Long) -> Unit
+) {
+    val context = LocalContext.current
+    var amountDigits by remember { mutableStateOf("") }
+    var feeDigits by remember { mutableStateOf("") }
+    var selected by remember { mutableStateOf(accounts.firstOrNull()?.id ?: "") }
+
+    AppBottomSheet(onDismiss) {
+        Text(title, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Ink)
+        if (infoText != null) {
+            Spacer(Modifier.height(4.dp))
+            Text(infoText, color = Muted, fontSize = 12.sp)
+        }
+        Spacer(Modifier.height(14.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SheetField(
+                value = amountDigits,
+                onValueChange = { amountDigits = it },
+                label = amountLabel,
+                isMoney = true,
+                autoThousand = true
+            )
+            SheetField(
+                value = feeDigits,
+                onValueChange = { feeDigits = it },
+                label = feeLabel,
+                isMoney = true,
+                autoThousand = false,
+                showZeroButton = false
+            )
+            Text(accountLabel, color = Muted, fontSize = 12.sp)
+            AccountCardList(accounts, selected) { selected = it }
+        }
+        Spacer(Modifier.height(16.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SheetButton("Batal", onDismiss, Modifier.weight(1f), primary = false)
+            SheetButton(
+                "Simpan",
+                {
+                    val account = accounts.firstOrNull { it.id == selected }
+                    if (account != null) {
+                        val amount = (amountDigits.toLongOrNull() ?: 0L) *
+                            AppPrefs.multiplier(AppPrefs.trailingZeros(context))
+                        val fee = feeDigits.toLongOrNull() ?: 0L
+                        onConfirm(account, amount, fee)
+                    }
+                },
+                Modifier.weight(1f),
+                primary = true,
+                enabled = accounts.isNotEmpty()
+            )
+        }
+    }
+}
+
+@Composable
 fun AccountPickerDialog(
     title: String,
     accounts: List<AccountEntity>,
@@ -663,38 +823,26 @@ fun AccountPickerDialog(
 ) {
     var selected by remember { mutableStateOf(accounts.firstOrNull()?.id ?: "") }
     AppBottomSheet(onDismiss) {
-        Text(title, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Ink)
-        Spacer(Modifier.height(12.dp))
+        Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Ink)
+        Spacer(Modifier.height(10.dp))
         if (accounts.isEmpty()) {
             Text("Belum ada rekening.", color = Muted)
         } else {
             LazyColumn(
-                modifier = Modifier.heightIn(max = 220.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier.heightIn(max = 280.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 items(accounts, key = { it.id }) { a ->
-                    val isSelected = selected == a.id
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(CardBg)
-                            .then(
-                                if (isSelected) Modifier.border(1.dp, Ink, RoundedCornerShape(10.dp))
-                                else Modifier
-                            )
-                            .clickable { selected = a.id }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(a.name, fontWeight = FontWeight.Medium, color = Ink, fontSize = 14.sp)
-                        Text(rupiah(a.balance), color = Muted, fontSize = 12.sp)
-                    }
+                    OptionCard(
+                        primary = a.name,
+                        secondary = rupiah(a.balance),
+                        selected = selected == a.id,
+                        onClick = { selected = a.id }
+                    )
                 }
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SheetButton("Batal", onDismiss, Modifier.weight(1f), primary = false)
             SheetButton(
@@ -721,9 +869,7 @@ fun DebtPaymentDialog(
     val context = LocalContext.current
     val mul = remember { AppPrefs.multiplier(AppPrefs.trailingZeros(context)) }.coerceAtLeast(1L)
     val remaining = (total - paid).coerceAtLeast(0L)
-
     var amountDigits by remember { mutableStateOf(if (remaining % mul == 0L) (remaining / mul).toString() else "") }
-    // Dipakai kalau nominal (mis. sisa) tidak habis dibagi pengali nol otomatis.
     var exactAmount by remember { mutableStateOf<Long?>(if (remaining % mul == 0L) null else remaining) }
     var selected by remember { mutableStateOf(accounts.firstOrNull()?.id ?: "") }
 
@@ -744,11 +890,11 @@ fun DebtPaymentDialog(
         Text(title, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Ink)
         Spacer(Modifier.height(6.dp))
         Text(
-            "Total ${rupiah(total)} · Sudah ${rupiah(paid)} · Sisa ${rupiah(remaining)}",
+            "Total ${rupiah(total)}, Terbayar ${rupiah(paid)}, Kurang ${rupiah(remaining)}",
             color = Muted,
             fontSize = 13.sp
         )
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(7.dp))
         SheetField(
             value = amountDigits,
             onValueChange = {
@@ -759,63 +905,20 @@ fun DebtPaymentDialog(
             isMoney = true,
             autoThousand = true
         )
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SelectableChip(label = "Lunasi semua", selected = amount == remaining) {
-                setAmount(remaining)
-            }
-            if (remaining >= 2L) {
-                SelectableChip(label = "Setengah sisa", selected = amount == remaining / 2) {
-                    setAmount(remaining / 2)
-                }
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        if (amount > 0L) {
-            Text("Nominal: ${rupiah(amount)}", color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-        }
         if (amount > remaining) {
             Spacer(Modifier.height(6.dp))
             Text("Nominal melebihi sisa (${rupiah(remaining)})", color = Red, fontSize = 12.sp)
         } else if (amount in 1L until remaining) {
             Spacer(Modifier.height(6.dp))
-            Text("Sisa setelah ini ${rupiah(remaining - amount)}", color = Muted, fontSize = 12.sp)
+            Text("Sisa setelah ini ${rupiah(remaining - amount)}", color = Ink, fontSize = 12.sp)
         } else if (amount == remaining && remaining > 0L) {
             Spacer(Modifier.height(6.dp))
-            Text("Akan ditandai lunas", color = Muted, fontSize = 12.sp)
+            Text("Akan ditandai lunas", color = Ink, fontSize = 12.sp)
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(6.dp))
         Text("Rekening", color = Muted, fontSize = 12.sp)
         Spacer(Modifier.height(4.dp))
-        if (accounts.isEmpty()) {
-            Text("Belum ada rekening.", color = Muted)
-        } else {
-            LazyColumn(
-                modifier = Modifier.heightIn(max = 200.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                items(accounts, key = { it.id }) { a ->
-                    val isSelected = selected == a.id
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(CardBg)
-                            .then(
-                                if (isSelected) Modifier.border(1.dp, Ink, RoundedCornerShape(10.dp))
-                                else Modifier
-                            )
-                            .clickable { selected = a.id }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(a.name, fontWeight = FontWeight.Medium, color = Ink, fontSize = 14.sp)
-                        Text(rupiah(a.balance), color = Muted, fontSize = 12.sp)
-                    }
-                }
-            }
-        }
+        AccountCardList(accounts, selected) { selected = it }
         Spacer(Modifier.height(16.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SheetButton("Batal", onDismiss, Modifier.weight(1f), primary = false)

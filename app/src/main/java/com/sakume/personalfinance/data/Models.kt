@@ -67,6 +67,21 @@ data class InvestmentEntity(
     val archived: Boolean = false
 )
 
+/** Aset (crypto / ETF / saham) yang dibeli memakai saldo platform. [cost] = modal dalam rupiah. */
+@Serializable
+@Entity(
+    tableName = "investment_holdings",
+    indices = [Index("platformId")]
+)
+data class InvestmentHoldingEntity(
+    @PrimaryKey val id: String,
+    val platformId: String,
+    val name: String,
+    val type: String,
+    val cost: Long,
+    val createdAtMillis: Long
+)
+
 @Serializable
 @Entity(
     tableName = "investment_contributions",

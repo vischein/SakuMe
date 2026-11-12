@@ -21,7 +21,8 @@ import java.util.UUID
     val contributions: List<InvestmentContributionEntity>,
     val debts: List<DebtEntity>,
     val schedules: List<ScheduledInvestmentEntity> = emptyList(),
-    val salaries: List<SalaryScheduleEntity> = emptyList()
+    val salaries: List<SalaryScheduleEntity> = emptyList(),
+    val holdings: List<InvestmentHoldingEntity> = emptyList()
 )
 object BackupCodec {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }

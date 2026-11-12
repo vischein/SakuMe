@@ -104,6 +104,30 @@ interface FinanceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putInvestments(items: List<InvestmentEntity>)
 
+    @Query("SELECT * FROM investment_holdings ORDER BY createdAtMillis ASC")
+    fun holdings(): Flow<List<InvestmentHoldingEntity>>
+
+    @Query("SELECT * FROM investment_holdings")
+    suspend fun allHoldings(): List<InvestmentHoldingEntity>
+
+    @Query("SELECT * FROM investment_holdings WHERE platformId = :platformId")
+    suspend fun holdingsForPlatform(platformId: String): List<InvestmentHoldingEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putHolding(item: InvestmentHoldingEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putHoldings(items: List<InvestmentHoldingEntity>)
+
+    @Query("DELETE FROM investment_holdings WHERE id = :id")
+    suspend fun deleteHolding(id: String)
+
+    @Query("DELETE FROM investment_holdings WHERE platformId = :platformId")
+    suspend fun deleteHoldingsForPlatform(platformId: String)
+
+    @Query("DELETE FROM investment_holdings")
+    suspend fun clearHoldings()
+
     @Query("SELECT * FROM investment_contributions WHERE assetId = :assetId")
     suspend fun contributions(assetId: String): List<InvestmentContributionEntity>
 
@@ -202,11 +226,12 @@ interface FinanceDao {
         BillEntity::class,
         InvestmentEntity::class,
         InvestmentContributionEntity::class,
+        InvestmentHoldingEntity::class,
         DebtEntity::class,
         ScheduledInvestmentEntity::class,
         SalaryScheduleEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -334,6 +359,24 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS investment_holdings (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        platformId TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        cost INTEGER NOT NULL,
+                        createdAtMillis INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_investment_holdings_platformId ON investment_holdings(platformId)")
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -343,7 +386,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                     .addMigrations(
                         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4,
-                        MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11
+                        MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12
                     )
                     .build()
                     .also { INSTANCE = it }

@@ -14,6 +14,7 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
     val transactions = repo.transactions.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val bills = repo.bills.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val investments = repo.investments.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val holdings = repo.holdings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val debts = repo.debts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val schedules = repo.schedules.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val salaries = repo.salaries.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -101,6 +102,11 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
         run({ withdraw(asset, account, amount, adminFee) }, error)
 
     fun deleteInvestment(id: String) = run({ deleteInvestment(id) })
+
+    fun addHolding(platformId: String, name: String, type: String, cost: Long, error: (String) -> Unit) =
+        run({ addHolding(platformId, name, type, cost) }, error)
+
+    fun deleteHolding(id: String) = run({ deleteHolding(id) })
 
     fun addSchedule(assetId: String, accountId: String, amount: Long, dayOfWeek: Int, error: (String) -> Unit) =
         run({ addSchedule(assetId, accountId, amount, dayOfWeek) }, error)

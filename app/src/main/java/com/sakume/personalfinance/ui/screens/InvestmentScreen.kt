@@ -1,5 +1,6 @@
 package com.sakume.personalfinance.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.data.AccountEntity
 import com.sakume.personalfinance.data.InvestmentEntity
+import com.sakume.personalfinance.data.InvestmentHoldingEntity
 import com.sakume.personalfinance.data.ScheduledInvestmentEntity
 import com.sakume.personalfinance.ui.components.EmptyHint
 import com.sakume.personalfinance.ui.formatDate
@@ -58,7 +60,10 @@ fun InvestmentScreen(
     items: List<InvestmentEntity>,
     accounts: List<AccountEntity>,
     schedules: List<ScheduledInvestmentEntity>,
+    holdings: List<InvestmentHoldingEntity> = emptyList(),
     onAdd: () -> Unit,
+    onAddHolding: (InvestmentEntity) -> Unit = {},
+    onDeleteHolding: (InvestmentHoldingEntity) -> Unit = {},
     onContribute: (InvestmentEntity) -> Unit,
     onWithdraw: (InvestmentEntity) -> Unit,
     onSchedule: (InvestmentEntity) -> Unit,
@@ -93,7 +98,7 @@ fun InvestmentScreen(
             ) {
                 Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Aset", fontSize = 13.sp)
+                Text("Platform", fontSize = 13.sp)
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -103,7 +108,7 @@ fun InvestmentScreen(
             contentPadding = PaddingValues(top = 2.dp, bottom = 20.dp)
         ) {
             if (active.isEmpty()) {
-                item { EmptyHint("Belum ada aset investasi. Tambahkan aset lalu setor dari rekening.") }
+                item { EmptyHint("Belum ada platform investasi (mis. Pluang, Bybit, Binance). Tambahkan platform lalu setor dari rekening.") }
             } else {
                 items(active, key = { it.id }) { a ->
                     Surface(
@@ -145,6 +150,56 @@ fun InvestmentScreen(
                                     fontSize = 11.sp
                                 )
                             }
+                            val platformHoldings = holdings.filter { it.platformId == a.id }
+                            val held = platformHoldings.sumOf { it.cost }
+                            val available = a.value - held
+                            Text(
+                                "Saldo tersedia: ${rupiah(available)}",
+                                color = Muted,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                            if (platformHoldings.isNotEmpty()) {
+                                Spacer(Modifier.height(8.dp))
+                                platformHoldings.forEach { h ->
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                h.name,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 13.sp,
+                                                color = Ink,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(h.type, color = Muted, fontSize = 11.sp)
+                                        }
+                                        Text(rupiah(h.cost), fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Ink)
+                                        Text(
+                                            "Hapus",
+                                            color = Red,
+                                            fontSize = 12.sp,
+                                            modifier = Modifier
+                                                .clickable { onDeleteHolding(h) }
+                                                .padding(start = 12.dp, top = 4.dp, bottom = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Button(
+                                onClick = { onAddHolding(a) },
+                                modifier = Modifier.fillMaxWidth().height(34.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Ink),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text("Aset ( Crypto / ETF / Saham )", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
                             Spacer(Modifier.height(10.dp))
 
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -161,7 +216,7 @@ fun InvestmentScreen(
                                     onClick = { onWithdraw(a) },
                                     modifier = Modifier.weight(1f).height(36.dp),
                                     shape = RoundedCornerShape(10.dp),
-                                    enabled = a.value > 0,
+                                    enabled = available > 0,
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = Paper,
                                         contentColor = Ink,
@@ -236,7 +291,7 @@ fun InvestmentScreen(
             }
 
             if (schedules.isEmpty()) {
-                item { EmptyHint("Belum ada jadwal. Ketuk Jadwal pada aset untuk menambah.") }
+                item { EmptyHint("Belum ada jadwal. Ketuk Jadwal pada platform untuk menambah.") }
             } else {
                 items(schedules, key = { it.id }) { s ->
                     Surface(
@@ -252,7 +307,7 @@ fun InvestmentScreen(
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     Text(
-                                        active.firstOrNull { it.id == s.assetId }?.name ?: "Aset",
+                                        active.firstOrNull { it.id == s.assetId }?.name ?: "Platform",
                                         fontWeight = FontWeight.Bold,
                                         color = Ink,
                                         fontSize = 14.sp,

@@ -5,12 +5,15 @@ import kotlinx.coroutines.flow.Flow
 import java.util.Calendar
 import java.util.UUID
 
+val HOLDING_TYPES = listOf("Crypto", "ETF", "Saham")
+
 class FinanceRepository(private val db: AppDatabase) {
     private val dao = db.dao()
     val accounts: Flow<List<AccountEntity>> = dao.accounts()
     val transactions: Flow<List<TransactionEntity>> = dao.transactions()
     val bills: Flow<List<BillEntity>> = dao.bills()
     val investments: Flow<List<InvestmentEntity>> = dao.investments()
+    val holdings: Flow<List<InvestmentHoldingEntity>> = dao.holdings()
     val debts: Flow<List<DebtEntity>> = dao.debts()
     val schedules: Flow<List<ScheduledInvestmentEntity>> = dao.schedules()
     val salaries: Flow<List<SalaryScheduleEntity>> = dao.salaries()
@@ -188,6 +191,8 @@ class FinanceRepository(private val db: AppDatabase) {
                     "expense" -> {
                         if (asset != null && !asset.archived) {
                             require(asset.value >= item.amount) { "Nilai investasi tidak konsisten" }
+                            val held = dao.holdingsForPlatform(asset.id).sumOf { it.cost }
+                            require(asset.value - item.amount >= held) { "Saldo platform sudah dipakai untuk aset. Hapus aset terlebih dahulu" }
                             dao.putInvestment(asset.copy(value = asset.value - item.amount))
                         }
                         dao.allContributions().filter { it.transactionId == item.id }.forEach { contribution ->
@@ -392,13 +397,31 @@ class FinanceRepository(private val db: AppDatabase) {
         )
     }
 
+    suspend fun addHolding(platformId: String, name: String, type: String, cost: Long) = db.withTransaction {
+        val cleanName = name.trim()
+        require(cleanName.isNotBlank()) { "Nama aset wajib diisi" }
+        require(type in HOLDING_TYPES) { "Jenis aset tidak valid" }
+        require(cost > 0) { "Nominal harus lebih dari nol" }
+        val platform = dao.allInvestments().firstOrNull { it.id == platformId && !it.archived }
+            ?: error("Platform tidak ditemukan")
+        val available = platform.value - dao.holdingsForPlatform(platformId).sumOf { it.cost }
+        require(cost <= available) { "Saldo platform tidak cukup (tersedia $available)" }
+        dao.putHolding(InvestmentHoldingEntity(id(), platformId, cleanName, type, cost, System.currentTimeMillis()))
+    }
+
+    /** Menghapus aset: modalnya kembali menjadi saldo tersedia di platform. */
+    suspend fun deleteHolding(holdingId: String) = db.withTransaction {
+        dao.deleteHolding(holdingId)
+    }
+
     suspend fun withdraw(assetId: String, accountId: String, amount: Long, adminFee: Long = 0L) = db.withTransaction {
         require(amount > 0) { "Nominal harus lebih dari nol" }
         require(adminFee >= 0) { "Biaya admin tidak valid" }
         require(adminFee <= amount) { "Biaya admin melebihi nominal tarik" }
         val asset = dao.allInvestments().firstOrNull { it.id == assetId && !it.archived }
             ?: error("Aset tidak ditemukan")
-        require(asset.value >= amount) { "Nilai investasi tidak cukup (tersedia ${asset.value})" }
+        val available = asset.value - dao.holdingsForPlatform(assetId).sumOf { it.cost }
+        require(available >= amount) { "Saldo platform tidak cukup (tersedia $available)" }
         val account = dao.account(accountId) ?: error("Rekening tidak ditemukan")
         val now = System.currentTimeMillis()
         dao.putAccount(account.copy(balance = account.balance + amount))
@@ -456,6 +479,7 @@ class FinanceRepository(private val db: AppDatabase) {
             dao.deleteTransaction(transaction.id)
         }
         dao.deleteContributions(assetId)
+        dao.deleteHoldingsForPlatform(assetId)
         dao.deleteSchedulesForAsset(assetId)
         dao.putInvestment(asset.copy(value = 0L, archived = true))
     }
@@ -816,7 +840,8 @@ class FinanceRepository(private val db: AppDatabase) {
     suspend fun exportJson(): String {
         val data = BackupData(
             dao.allAccounts(), dao.allTransactions(), dao.allBills(), dao.allInvestments(),
-            dao.allContributions(), dao.allDebts(), dao.allSchedules(), dao.allSalaries()
+            dao.allContributions(), dao.allDebts(), dao.allSchedules(), dao.allSalaries(),
+            dao.allHoldings()
         )
         return BackupCodec.encode(data)
     }
@@ -834,6 +859,7 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.clearBills()
         dao.clearInvestments()
         dao.clearContributions()
+        dao.clearHoldings()
         dao.clearDebts()
         dao.clearSchedules()
         dao.clearSalaries()
@@ -842,6 +868,7 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.putBills(data.bills)
         dao.putInvestments(data.investments)
         dao.putContributions(data.contributions)
+        dao.putHoldings(data.holdings)
         dao.putDebts(data.debts)
         dao.putSchedules(data.schedules)
         dao.putSalaries(data.salaries)
@@ -881,6 +908,9 @@ class FinanceRepository(private val db: AppDatabase) {
         require(data.contributions.all {
             it.amount > 0L && it.accountId in accountIds && it.assetId in assetIds && it.transactionId.isNotBlank()
         }) { "Backup memiliki kontribusi investasi yang tidak valid" }
+        require(data.holdings.all {
+            it.cost > 0L && it.platformId in assetIds && it.type in HOLDING_TYPES && it.name.isNotBlank()
+        }) { "Backup memiliki aset investasi yang tidak valid" }
         require(data.transactions.all { it.investmentAssetId == null || it.investmentAssetId in assetIds }) { "Backup memiliki transaksi investasi yang tidak valid" }
         require(data.schedules.all {
             it.amount > 0L && it.accountId in accountIds && it.assetId in assetIds && it.dayOfWeek in 1..7
