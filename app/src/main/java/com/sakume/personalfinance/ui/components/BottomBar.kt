@@ -26,20 +26,26 @@ import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.ui.theme.CardBg
 import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Muted
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.outlined.Insights
 
 @Composable
-fun SakuMeBottomBar(selected: String, onSelect: (String) -> Unit) {
-    val navItems = listOf(
-        Triple("Home", Icons.Filled.Home, Icons.Outlined.Home),
-        Triple("Accounts", Icons.Filled.CreditCard, Icons.Outlined.CreditCard),
-        Triple("Bills", Icons.Filled.ReceiptLong, Icons.Outlined.ReceiptLong),
-        Triple("Invest", Icons.Filled.TrendingUp, Icons.Outlined.TrendingUp),
-        Triple("More", Icons.Filled.MoreHoriz, Icons.Outlined.MoreHoriz)
-    )
+fun SakuMeBottomBar(
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    val navItems =
+        listOf(
+            Triple("Home", Icons.Filled.Home, Icons.Outlined.Home),
+            Triple("Analisis", Icons.Filled.Insights, Icons.Outlined.Insights),
+            Triple("Bills", Icons.Filled.ReceiptLong, Icons.Outlined.ReceiptLong),
+            Triple("Invest", Icons.Filled.TrendingUp, Icons.Outlined.TrendingUp),
+            Triple("More", Icons.Filled.MoreHoriz, Icons.Outlined.MoreHoriz),
+        )
     NavigationBar(
         containerColor = CardBg,
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, Color(0xFFEEEEEE))
+        modifier = Modifier.border(1.dp, Color(0xFFEEEEEE)),
     ) {
         navItems.forEach { (label, filled, outlined) ->
             val isSelected = selected == label
@@ -49,23 +55,24 @@ fun SakuMeBottomBar(selected: String, onSelect: (String) -> Unit) {
                 icon = {
                     Icon(
                         imageVector = if (isSelected) filled else outlined,
-                        contentDescription = label
+                        contentDescription = label,
                     )
                 },
                 label = {
                     Text(
                         text = label,
                         fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                     )
                 },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = Color.White,
-                    selectedTextColor = Ink,
-                    indicatorColor = Ink,
-                    unselectedIconColor = Muted,
-                    unselectedTextColor = Muted
-                )
+                colors =
+                    NavigationBarItemDefaults.colors(
+                        selectedIconColor = Color.White,
+                        selectedTextColor = Ink,
+                        indicatorColor = Ink,
+                        unselectedIconColor = Muted,
+                        unselectedTextColor = Muted,
+                    ),
             )
         }
     }

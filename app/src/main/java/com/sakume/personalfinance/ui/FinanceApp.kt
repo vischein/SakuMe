@@ -31,7 +31,8 @@ import com.sakume.personalfinance.ui.components.SakuMeBottomBar
 import com.sakume.personalfinance.ui.components.FormDialog
 import com.sakume.personalfinance.ui.components.MessageDialog
 import com.sakume.personalfinance.ui.isCashAccount
-import com.sakume.personalfinance.ui.screens.AccountsScreen
+import com.sakume.personalfinance.ui.screens.AnalyticsScreen
+import com.sakume.personalfinance.ui.screens.ManageAccountsScreen
 import com.sakume.personalfinance.ui.screens.BackupScreen
 import com.sakume.personalfinance.ui.screens.TransactionHistoryScreen
 import com.sakume.personalfinance.ui.screens.BillsScreen
@@ -270,6 +271,19 @@ fun FinanceApp(vm: FinanceViewModel) {
                                 )
                             }
                         )
+                    } else if (subScreen == "manageAccounts") {
+                        ManageAccountsScreen(
+                            accounts = accounts,
+                            tx = transactions,
+                            onAdd = { dialog = "account" },
+                            onTransfer = { dialog = "transfer" },
+                            onAddTx = { dialog = "transaction" },
+                            onAccountClick = { account -> historyAccountId = account.id; subScreen = "txHistory" },
+                            onCash = { dialog = "cash" },
+                            onDelete = { a -> dialog = "deleteaccount:${a.id}" },
+                            onReorder = { ids -> vm.reorderAccounts(ids) },
+                            onBack = { subScreen = null }
+                        )
                     } else when (tab) {
                         "Home" -> HomeScreen(
                             accounts = accounts,
@@ -279,7 +293,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                             debts = debts,
                             onAction = { action ->
                                 when {
-                                    action == "accounts" -> tab = "Accounts"
+                                    action == "accounts" -> subScreen = "manageAccounts"
                                     action.startsWith("accountHistory:") -> {
                                         historyAccountId = action.removePrefix("accountHistory:")
                                         subScreen = "txHistory"
@@ -290,7 +304,7 @@ fun FinanceApp(vm: FinanceViewModel) {
                                             historyAccountId = cash.id
                                             subScreen = "txHistory"
                                         } else {
-                                            tab = "Accounts"
+                                            subScreen = "manageAccounts"
                                         }
                                     }
                                     action == "bills" -> {
@@ -316,16 +330,12 @@ fun FinanceApp(vm: FinanceViewModel) {
                             onOpenSettings = { subScreen = "settings" },
                             onSeeAllTx = { subScreen = "txHistory" }
                         )
-                        "Accounts" -> AccountsScreen(
+                        "Analisis" -> AnalyticsScreen(
                             accounts = accounts,
                             tx = transactions,
-                            onAdd = { dialog = "account" },
-                            onTransfer = { dialog = "transfer" },
-                            onAddTx = { dialog = "transaction" },
-                            onAccountClick = { account -> historyAccountId = account.id; subScreen = "txHistory" },
-                            onCash = { dialog = "cash" },
-                            onDelete = { a -> dialog = "deleteaccount:${a.id}" },
-                            onReorder = { ids -> vm.reorderAccounts(ids) }
+                            bills = bills,
+                            debts = debts,
+                            onManageAccounts = { subScreen = "manageAccounts" }
                         )
                         "Bills" -> BillsScreen(
                             bills = bills,

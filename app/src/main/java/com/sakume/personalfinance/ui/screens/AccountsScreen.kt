@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -76,7 +77,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
-fun AccountsScreen(
+fun ManageAccountsScreen(
     accounts: List<AccountEntity>,
     tx: List<TransactionEntity>,
     onAdd: () -> Unit,
@@ -85,7 +86,8 @@ fun AccountsScreen(
     onAccountClick: (AccountEntity) -> Unit = {},
     onCash: () -> Unit = {},
     onDelete: (AccountEntity) -> Unit,
-    onReorder: (List<String>) -> Unit
+    onReorder: (List<String>) -> Unit,
+    onBack: (() -> Unit)? = null
 ) {
     val bankAccounts = accounts.filterNot { it.type.equals("Cash", true) || it.name.equals("Dompet Tunai", true) || it.name.equals("Cash", true) }
     var localList by remember { mutableStateOf(bankAccounts) }
@@ -114,17 +116,24 @@ fun AccountsScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text("Rekening", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Ink)
-                Text(
-                    when (mode) {
-                        "reorder" -> "Geser kartu untuk mengubah urutan"
-                        "delete" -> "Ketuk ikon hapus pada rekening"
-                        else -> "Kelola rekening & transfer"
-                    },
-                    color = Muted,
-                    fontSize = 12.sp
-                )
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                if (onBack != null) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali", tint = Ink)
+                    }
+                }
+                Column {
+                    Text("Rekening", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Text(
+                        when (mode) {
+                            "reorder" -> "Geser kartu untuk mengubah urutan"
+                            "delete" -> "Ketuk ikon hapus pada rekening"
+                            else -> "Kelola rekening & transfer"
+                        },
+                        color = Muted,
+                        fontSize = 12.sp
+                    )
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (mode != "normal") {
