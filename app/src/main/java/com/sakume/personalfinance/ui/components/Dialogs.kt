@@ -131,8 +131,7 @@ private fun SheetField(
     label: String,
     isMoney: Boolean = false,
     autoThousand: Boolean = false,
-    singleLine: Boolean = true,
-    showZeroButton: Boolean = true
+    singleLine: Boolean = true
 ) {
     if (isMoney) {
         val context = LocalContext.current
@@ -182,22 +181,6 @@ private fun SheetField(
                     disabledIndicatorColor = Color.Transparent
                 )
             )
-            if (zeroCount > 0 && showZeroButton) {
-                Text(
-                    text = zerosStr,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Ink)
-                        .clickable {
-                            val dig = digits + zerosStr
-                            onValueChange(dig)
-                        }
-                        .padding(horizontal = 14.dp, vertical = 16.dp)
-                )
-            }
         }
     } else {
         TextField(
@@ -373,8 +356,7 @@ fun FormDialog(
                         onValueChange = { values[i] = it },
                         label = field,
                         isMoney = money,
-                        autoThousand = autoZeros,
-                        showZeroButton = i !in manualMoneyFields
+                        autoThousand = autoZeros
                     )
                 }
                 if (includeDueDate && i == minOf(1, fields.lastIndex)) {
@@ -786,8 +768,7 @@ fun InvestmentTransferDialog(
                 onValueChange = { feeDigits = it },
                 label = feeLabel,
                 isMoney = true,
-                autoThousand = false,
-                showZeroButton = false
+                autoThousand = false
             )
             Text(accountLabel, color = Muted, fontSize = 12.sp)
             AccountCardList(accounts, selected) { selected = it }
