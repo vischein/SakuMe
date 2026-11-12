@@ -94,11 +94,11 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
     fun updateInvestment(id: String, name: String, target: Long?, error: (String) -> Unit = {}) =
         run({ updateInvestment(id, name, target) }, error)
 
-    fun contribute(asset: String, account: String, amount: Long, error: (String) -> Unit) =
-        run({ contribute(asset, account, amount) }, error)
+    fun contribute(asset: String, account: String, amount: Long, adminFee: Long = 0L, error: (String) -> Unit) =
+        run({ contribute(asset, account, amount, adminFee) }, error)
 
-    fun withdraw(asset: String, account: String, amount: Long, error: (String) -> Unit) =
-        run({ withdraw(asset, account, amount) }, error)
+    fun withdraw(asset: String, account: String, amount: Long, adminFee: Long = 0L, error: (String) -> Unit) =
+        run({ withdraw(asset, account, amount, adminFee) }, error)
 
     fun deleteInvestment(id: String) = run({ deleteInvestment(id) })
 

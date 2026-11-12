@@ -622,20 +622,25 @@ fun FinanceApp(vm: FinanceViewModel) {
                 val asset = investments.firstOrNull { it.id == dialog.substringAfter(":") }
                 FormDialog(
                     title = "Tarik investasi",
-                    fields = listOf("Nominal"),
+                    fields = listOf("Nominal", "Biaya admin (opsional)"),
+                    moneyFields = setOf(1),
+                    manualMoneyFields = setOf(1),
                     options = accounts.map { it.name },
                     optionLabel = "Ke rekening",
                     onDismiss = { dialog = "" }
                 ) { v ->
                     val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
-                    val acc = accounts.firstOrNull { it.name == v.getOrElse(1) { "" } }
+                    // Biaya admin manual penuh (tanpa pengali nol otomatis).
+                    val adminFee = v[1].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                    val acc = accounts.firstOrNull { it.name == v.getOrElse(2) { "" } }
                     when {
                         asset == null -> error = "Aset tidak ditemukan"
                         acc == null -> error = "Pilih rekening"
                         amount <= 0 -> error = "Nominal harus lebih dari nol"
                         amount > asset.value -> error = "Maksimal ${asset.value}"
+                        adminFee > amount -> error = "Biaya admin melebihi nominal tarik"
                         else -> {
-                            vm.withdraw(asset.id, acc.id, amount) { error = it }
+                            vm.withdraw(asset.id, acc.id, amount, adminFee) { error = it }
                             dialog = ""
                         }
                     }
@@ -646,19 +651,24 @@ fun FinanceApp(vm: FinanceViewModel) {
                 val asset = investments.firstOrNull { it.id == dialog.substringAfter(":") }
                 FormDialog(
                     title = "Setor investasi",
-                    fields = listOf("Nominal"),
+                    fields = listOf("Nominal", "Biaya admin topup (opsional)"),
+                    moneyFields = setOf(1),
+                    manualMoneyFields = setOf(1),
                     options = accounts.map { it.name },
                     optionLabel = "Dari rekening",
                     onDismiss = { dialog = "" }
                 ) { v ->
                     val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
-                    val acc = accounts.firstOrNull { it.name == v.getOrElse(1) { "" } }
+                    // Biaya admin diinput manual penuh (tanpa pengali nol otomatis).
+                    val adminFee = v[1].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                    val acc = accounts.firstOrNull { it.name == v.getOrElse(2) { "" } }
                     when {
                         asset == null -> error = "Aset tidak ditemukan"
                         acc == null -> error = "Pilih rekening"
                         amount <= 0 -> error = "Nominal harus lebih dari nol"
+                        acc.balance < amount + adminFee -> error = "Saldo rekening tidak cukup"
                         else -> {
-                            vm.contribute(asset.id, acc.id, amount) { error = it }
+                            vm.contribute(asset.id, acc.id, amount, adminFee) { error = it }
                             dialog = ""
                         }
                     }
@@ -666,7 +676,7 @@ fun FinanceApp(vm: FinanceViewModel) {
             }
 
             dialog.startsWith("deleteinvest:") -> ConfirmDialog(
-                title = "Hapus aset dan refund semua kontribusi ke rekening asal?",
+                title = "Hapus aset dan refund semua kontribusi beserta biaya admin ke rekening yang dipilih?",
                 confirm = {
                     vm.deleteInvestment(dialog.substringAfter(":"))
                     dialog = ""

@@ -360,16 +360,27 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.putInvestment(asset.copy(name = name.trim(), target = target?.takeIf { it > 0 }))
     }
 
-    suspend fun contribute(assetId: String, accountId: String, amount: Long) = db.withTransaction {
+    suspend fun contribute(assetId: String, accountId: String, amount: Long, adminFee: Long = 0L) = db.withTransaction {
         require(amount > 0) { "Nominal harus lebih dari nol" }
+        require(adminFee >= 0) { "Biaya admin tidak valid" }
         val asset = dao.allInvestments().firstOrNull { it.id == assetId && !it.archived }
             ?: error("Aset tidak ditemukan")
         val account = dao.account(accountId) ?: error("Rekening tidak ditemukan")
-        require(account.balance >= amount) { "Saldo rekening tidak cukup" }
+        require(account.balance >= amount + adminFee) { "Saldo rekening tidak cukup" }
         val txId = id()
         val now = System.currentTimeMillis()
-        dao.putAccount(account.copy(balance = account.balance - amount))
+        // Biaya admin dipotong dari rekening, tetapi tidak menambah nilai aset.
+        dao.putAccount(account.copy(balance = account.balance - amount - adminFee))
         dao.putInvestment(asset.copy(value = asset.value + amount))
+        if (adminFee > 0) {
+            // Transaksi terpisah (tanpa investmentAssetId, ditautkan lewat feeAssetId); dikembalikan saat aset dihapus.
+            dao.putTransaction(
+                TransactionEntity(
+                    id(), "expense", adminFee, "Admin bank", accountId, now,
+                    "Biaya admin setor ke ${asset.name}", feeAssetId = assetId
+                )
+            )
+        }
         dao.putTransaction(
             TransactionEntity(
                 txId, "expense", amount, "Investasi", accountId, now,
@@ -381,8 +392,10 @@ class FinanceRepository(private val db: AppDatabase) {
         )
     }
 
-    suspend fun withdraw(assetId: String, accountId: String, amount: Long) = db.withTransaction {
+    suspend fun withdraw(assetId: String, accountId: String, amount: Long, adminFee: Long = 0L) = db.withTransaction {
         require(amount > 0) { "Nominal harus lebih dari nol" }
+        require(adminFee >= 0) { "Biaya admin tidak valid" }
+        require(adminFee <= amount) { "Biaya admin melebihi nominal tarik" }
         val asset = dao.allInvestments().firstOrNull { it.id == assetId && !it.archived }
             ?: error("Aset tidak ditemukan")
         require(asset.value >= amount) { "Nilai investasi tidak cukup (tersedia ${asset.value})" }
@@ -396,6 +409,16 @@ class FinanceRepository(private val db: AppDatabase) {
                 "Tarik dari ${asset.name}", assetId
             )
         )
+        if (adminFee > 0) {
+            // Fee dipotong dari dana yang diterima; ditautkan lewat feeAssetId, dikembalikan saat aset dihapus.
+            dao.putAccount(account.copy(balance = account.balance + amount - adminFee))
+            dao.putTransaction(
+                TransactionEntity(
+                    id(), "expense", adminFee, "Admin bank", accountId, now,
+                    "Biaya admin tarik dari ${asset.name}", feeAssetId = assetId
+                )
+            )
+        }
 
         var left = amount
         dao.contributions(assetId).sortedBy { it.createdAtMillis }.forEach { c ->
@@ -420,6 +443,13 @@ class FinanceRepository(private val db: AppDatabase) {
                 val account = dao.account(accountId) ?: error("Rekening kontribusi tidak ditemukan")
                 dao.putAccount(account.copy(balance = account.balance + total))
             }
+        }
+
+        // Biaya admin setor/tarik dikembalikan ke rekening yang dipilih pada transaksi masing-masing.
+        dao.feeTransactionsForInvestment(assetId).groupBy { it.accountId }.forEach { (accountId, fees) ->
+            val account = dao.account(accountId) ?: error("Rekening biaya admin tidak ditemukan")
+            dao.putAccount(account.copy(balance = account.balance + fees.sumOf { it.amount }))
+            fees.forEach { dao.deleteTransaction(it.id) }
         }
 
         dao.transactionsForInvestment(assetId).forEach { transaction ->

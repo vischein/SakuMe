@@ -65,6 +65,9 @@ interface FinanceDao {
     @Query("SELECT * FROM transactions WHERE investmentAssetId = :assetId")
     suspend fun transactionsForInvestment(assetId: String): List<TransactionEntity>
 
+    @Query("SELECT * FROM transactions WHERE feeAssetId = :assetId")
+    suspend fun feeTransactionsForInvestment(assetId: String): List<TransactionEntity>
+
     @Query("SELECT * FROM transactions WHERE transferGroupId = :groupId ORDER BY dateMillis ASC")
     suspend fun allTransactionsByGroup(groupId: String): List<TransactionEntity>
 
@@ -203,7 +206,7 @@ interface FinanceDao {
         ScheduledInvestmentEntity::class,
         SalaryScheduleEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -324,6 +327,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE transactions ADD COLUMN feeAssetId TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_transactions_feeAssetId ON transactions(feeAssetId)")
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -333,7 +343,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                     .addMigrations(
                         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4,
-                        MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10
+                        MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11
                     )
                     .build()
                     .also { INSTANCE = it }

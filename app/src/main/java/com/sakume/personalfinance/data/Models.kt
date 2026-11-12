@@ -20,7 +20,7 @@ data class AccountEntity(
 @Serializable
 @Entity(
     tableName = "transactions",
-    indices = [Index("accountId"), Index("transferGroupId"), Index("investmentAssetId")]
+    indices = [Index("accountId"), Index("transferGroupId"), Index("investmentAssetId"), Index("feeAssetId")]
 )
 data class TransactionEntity(
     @PrimaryKey val id: String,
@@ -33,7 +33,10 @@ data class TransactionEntity(
     val investmentAssetId: String? = null,
     val transferGroupId: String? = null,
 
-    val debtId: String? = null
+    val debtId: String? = null,
+
+    // Diisi untuk transaksi biaya admin setor/tarik investasi; dipakai saat Hapus / Refund aset.
+    val feeAssetId: String? = null
 )
 
 @Serializable

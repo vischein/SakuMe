@@ -128,7 +128,8 @@ private fun SheetField(
     label: String,
     isMoney: Boolean = false,
     autoThousand: Boolean = false,
-    singleLine: Boolean = true
+    singleLine: Boolean = true,
+    showZeroButton: Boolean = true
 ) {
     if (isMoney) {
         val context = LocalContext.current
@@ -178,7 +179,7 @@ private fun SheetField(
                     disabledIndicatorColor = Color.Transparent
                 )
             )
-            if (zeroCount > 0) {
+            if (zeroCount > 0 && showZeroButton) {
                 Text(
                     text = zerosStr,
                     color = Color.White,
@@ -278,6 +279,7 @@ fun FormDialog(
     initialExtraIndex: Int = 0,
     initialTertiaryIndex: Int = 0,
     moneyFields: Set<Int> = emptySet(),
+    manualMoneyFields: Set<Int> = emptySet(),
     fieldSuggestions: Map<Int, List<String>> = emptyMap(),
     includeDueDate: Boolean = false,
     dueDateLabel: String = "Tanggal jatuh tempo",
@@ -367,7 +369,8 @@ fun FormDialog(
                         onValueChange = { values[i] = it },
                         label = field,
                         isMoney = money,
-                        autoThousand = autoZeros
+                        autoThousand = autoZeros,
+                        showZeroButton = i !in manualMoneyFields
                     )
                 }
                 if (includeDueDate && i == minOf(1, fields.lastIndex)) {
