@@ -181,7 +181,18 @@ fun HomeScreen(
             }
         }
 
-        
+        item { SectionHeader("Rekening saya", "Lihat semua") { onAction("accounts") } }
+        if (accounts.isEmpty()) {
+            item { EmptyHint("Belum ada rekening. Tambahkan untuk mulai mencatat.") }
+        } else {
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(accounts) { a ->
+                        AccountMiniCard(a, isCash = isCash(a)) { onAction("accounts") }
+                    }
+                }
+            }
+        }
 
         item {
             SectionHeader("Tagihan aktif", if (unpaidBills.isNotEmpty()) "Lihat semua" else null) {

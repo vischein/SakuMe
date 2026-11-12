@@ -8,35 +8,37 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-fun rupiah(value: Long): String =
-    NumberFormat.getCurrencyInstance(Locale("id", "ID")).apply { maximumFractionDigits = 0 }.format(value)
+fun rupiah(value: Long): String = NumberFormat.getCurrencyInstance(Locale("id", "ID")).apply { maximumFractionDigits = 0 }.format(value)
 
-fun isCashAccount(a: AccountEntity): Boolean =
-    a.type.equals("Cash", true) || a.name.contains("tunai", true) || a.name.contains("cash", true)
+fun isCashAccount(a: AccountEntity): Boolean = a.type.equals("Cash", true) || a.name.contains("cash", true)
 
 fun monthKey(ms: Long): Int =
     Calendar.getInstance().apply { timeInMillis = ms }.let { it.get(Calendar.YEAR) * 100 + it.get(Calendar.MONTH) }
 
-fun monthLabel(ms: Long): String =
-    SimpleDateFormat("MMMM yyyy", Locale("id", "ID")).format(Date(ms))
+fun monthLabel(ms: Long): String = SimpleDateFormat("MMMM yyyy", Locale("id", "ID")).format(Date(ms))
 
-fun formatDate(ms: Long): String =
-    SimpleDateFormat("dd MMM yyyy", Locale("id", "ID")).format(Date(ms))
+fun formatDate(ms: Long): String = SimpleDateFormat("dd MMM yyyy", Locale("id", "ID")).format(Date(ms))
 
 fun daysUntilDue(dueDateMillis: Long): Int {
-    val today = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
-    val due = Calendar.getInstance().apply {
-        timeInMillis = dueDateMillis
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
+    val today =
+        Calendar
+            .getInstance()
+            .apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+    val due =
+        Calendar
+            .getInstance()
+            .apply {
+                timeInMillis = dueDateMillis
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
     return ((due - today) / 86_400_000L).toInt()
 }
 
@@ -72,10 +74,12 @@ fun timeGreeting(): String {
 }
 
 fun startOfMonthMillis(): Long =
-    Calendar.getInstance().apply {
-        set(Calendar.DAY_OF_MONTH, 1)
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
+    Calendar
+        .getInstance()
+        .apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
