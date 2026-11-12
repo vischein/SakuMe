@@ -280,6 +280,10 @@ fun FinanceApp(vm: FinanceViewModel) {
                             onAction = { action ->
                                 when {
                                     action == "accounts" -> tab = "Accounts"
+                                    action.startsWith("accountHistory:") -> {
+                                        historyAccountId = action.removePrefix("accountHistory:")
+                                        subScreen = "txHistory"
+                                    }
                                     action == "cashHistory" -> {
                                         val cash = accounts.firstOrNull { isCashAccount(it) }
                                         if (cash != null) {

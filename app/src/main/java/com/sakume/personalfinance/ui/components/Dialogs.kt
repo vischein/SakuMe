@@ -2,6 +2,7 @@ package com.sakume.personalfinance.ui.components
 
 import android.app.DatePickerDialog
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,10 +11,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -23,7 +27,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -662,23 +665,28 @@ fun AccountPickerDialog(
         if (accounts.isEmpty()) {
             Text("Belum ada rekening.", color = Muted)
         } else {
-            Column {
-                accounts.forEach { a ->
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 220.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(accounts, key = { it.id }) { a ->
+                    val isSelected = selected == a.id
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (selected == a.id) Paper else Color.Transparent)
+                            .background(CardBg)
+                            .then(
+                                if (isSelected) Modifier.border(1.dp, Ink, RoundedCornerShape(10.dp))
+                                else Modifier
+                            )
                             .clickable { selected = a.id }
-                            .padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        RadioButton(selected = selected == a.id, onClick = { selected = a.id })
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text(a.name, fontWeight = FontWeight.Medium)
-                            Text(rupiah(a.balance), color = Muted, fontSize = 12.sp)
-                        }
+                        Text(a.name, fontWeight = FontWeight.Medium, color = Ink, fontSize = 14.sp)
+                        Text(rupiah(a.balance), color = Muted, fontSize = 12.sp)
                     }
                 }
             }
@@ -779,23 +787,28 @@ fun DebtPaymentDialog(
         if (accounts.isEmpty()) {
             Text("Belum ada rekening.", color = Muted)
         } else {
-            Column {
-                accounts.forEach { a ->
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 200.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(accounts, key = { it.id }) { a ->
+                    val isSelected = selected == a.id
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (selected == a.id) Paper else Color.Transparent)
+                            .background(CardBg)
+                            .then(
+                                if (isSelected) Modifier.border(1.dp, Ink, RoundedCornerShape(10.dp))
+                                else Modifier
+                            )
                             .clickable { selected = a.id }
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        RadioButton(selected = selected == a.id, onClick = { selected = a.id })
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text(a.name, fontWeight = FontWeight.Medium)
-                            Text(rupiah(a.balance), color = Muted, fontSize = 12.sp)
-                        }
+                        Text(a.name, fontWeight = FontWeight.Medium, color = Ink, fontSize = 14.sp)
+                        Text(rupiah(a.balance), color = Muted, fontSize = 12.sp)
                     }
                 }
             }

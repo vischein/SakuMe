@@ -182,13 +182,13 @@ fun HomeScreen(
         }
 
         item { SectionHeader("Rekening saya", "Lihat semua") { onAction("accounts") } }
-        if (accounts.isEmpty()) {
+        if (bankAccounts.isEmpty()) {
             item { EmptyHint("Belum ada rekening. Tambahkan untuk mulai mencatat.") }
         } else {
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(accounts) { a ->
-                        AccountMiniCard(a, isCash = isCash(a)) { onAction("accounts") }
+                    items(bankAccounts) { a ->
+                        AccountMiniCard(a, isCash = false) { onAction("accountHistory:${a.id}") }
                     }
                 }
             }
