@@ -18,6 +18,15 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
     val schedules = repo.schedules.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val salaries = repo.salaries.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    init {
+        viewModelScope.launch {
+            try {
+                repo.cleanupCategoryLabels()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     fun run(action: suspend FinanceRepository.() -> Unit, onError: (String) -> Unit = {}) {
         viewModelScope.launch {
             try {

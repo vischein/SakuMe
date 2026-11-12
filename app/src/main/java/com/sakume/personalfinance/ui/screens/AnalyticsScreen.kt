@@ -45,6 +45,7 @@ import com.sakume.personalfinance.data.DebtEntity
 import com.sakume.personalfinance.data.TransactionEntity
 import com.sakume.personalfinance.ui.components.EmptyHint
 import com.sakume.personalfinance.ui.components.SelectableChip
+import com.sakume.personalfinance.ui.displayCategory
 import com.sakume.personalfinance.ui.formatDate
 import com.sakume.personalfinance.ui.monthLabel
 import com.sakume.personalfinance.ui.rupiah
@@ -111,7 +112,6 @@ private fun daysInRange(start: Long, end: Long): Int {
     return ((effectiveEnd - start) / 86_400_000L).toInt().coerceAtLeast(1)
 }
 
-/** Normalisasi nama kategori mirip (Rokok Bensin, Rokok 76 → Rokok, dll.). */
 fun normalizeCategory(raw: String): String {
     val original = raw.trim().ifBlank { return "Lainnya" }
     val lower = original.lowercase()
@@ -121,7 +121,6 @@ fun normalizeCategory(raw: String): String {
         .replace(Regex("\\s+"), " ")
         .trim()
 
-    // Rule berbasis kata kunci (urutan penting: spesifik dulu)
     val rules = listOf(
         listOf("rokok", "cigarette", "vape") to "Rokok",
         listOf("bensin", "pertamax", "pertalite", "solar", "bbm", "spbu") to "BBM",
@@ -143,8 +142,6 @@ fun normalizeCategory(raw: String): String {
         if (keys.any { lower.contains(it) }) return label
     }
 
-    // "Tagihan Kredivo" / prefix sebelum bullet sudah tertangani di atas
-    // Ambil kata pertama yang bermakna (≥3 huruf) sebagai grup kasar
     val first = lower.split(" ").firstOrNull { it.length >= 3 } ?: lower
     return first.replaceFirstChar { it.uppercase() }
 }
@@ -524,7 +521,7 @@ fun AnalyticsScreen(
                         ) {
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    t.category.ifBlank { t.note.ifBlank { "Pengeluaran" } },
+                                    displayCategory(t.category.ifBlank { t.note.ifBlank { "Pengeluaran" } }),
                                     fontWeight = FontWeight.Medium,
                                     color = Ink,
                                     maxLines = 1,

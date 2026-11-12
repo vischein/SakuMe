@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2] - 2026-11-12
+
+### Added
+- Layar Analisis menggantikan tab Accounts: ringkasan pemasukan/pengeluaran, netto, rata-rata harian, tingkat tabungan, insight singkat, breakdown per kategori & rekening, pengeluaran terbesar, serta tagihan/utang yang dibayar di periode itu
+- Filter periode di Analisis: bulan ini, bulan lalu, 3 bulan, dan tahun ini, plus perbandingan vs periode sebelumnya
+- Pengelompokan kategori otomatis untuk nama yang mirip (mis. beberapa variasi “Rokok …” digabung jadi satu grup, admin bank, tagihan, BBM, dll.)
+- Akses Kelola rekening dari Analisis atau dari “Lihat semua” di Home (tambah, urut, hapus, transfer, tarik tunai tetap ada)
+
+### Changed
+- Sheet pilih rekening (bayar tagihan, pembayaran utang, dll.): checklist diganti card; yang dipilih dapat border hitam tipis, yang tidak hanya background card
+- Daftar rekening di sheet dibuat lebih pendek (nama + saldo satu baris) dan bisa di-scroll jika panjang
+- Mini card rekening di Home membuka histori akun itu, bukan layar rekening
+- Dompet Tunai / Cash tidak lagi muncul di mini card Home (sudah ada di card Cash dashboard); akun cash tetap ada di sistem
+- Bottom bar diganti gaya pill mengambang, lebih compact, dengan label yang lebih ringkas
+
+### Removed
+- Tab Accounts di bottom bar (fungsinya diganti Analisis; kelola rekening jadi sub-screen)
+
 ## [Unreleased]
 
 ### Fixed

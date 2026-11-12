@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.data.TransactionEntity
+import com.sakume.personalfinance.ui.displayCategory
 import com.sakume.personalfinance.ui.formatDate
 import com.sakume.personalfinance.ui.rupiah
 import com.sakume.personalfinance.ui.theme.CardBg
@@ -181,7 +182,9 @@ fun TransactionRow(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                t.note.ifBlank { t.category }.ifBlank { if (isIn) "Pemasukan" else "Pengeluaran" },
+                displayCategory(
+                    t.note.ifBlank { t.category }.ifBlank { if (isIn) "Pemasukan" else "Pengeluaran" }
+                ),
                 fontWeight = FontWeight.SemiBold,
                 color = Ink,
                 maxLines = 1,

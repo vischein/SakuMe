@@ -77,7 +77,29 @@ class FinanceRepository(private val db: AppDatabase) {
             val computed = balances[acc.id] ?: acc.openingBalance
             if (acc.balance != computed) dao.putAccount(acc.copy(balance = computed))
         }
+        cleanupCategoryLabelsInternal()
     }
+
+    /** Rapikan label kategori lama (mis. "Tagihan • Kredivo" → "Tagihan Kredivo"). */
+    suspend fun cleanupCategoryLabels() = db.withTransaction {
+        cleanupCategoryLabelsInternal()
+    }
+
+    private suspend fun cleanupCategoryLabelsInternal() {
+        dao.allTransactions().forEach { tx ->
+            val cleaned = sanitizeCategoryStored(tx.category)
+            if (cleaned != tx.category) {
+                dao.putTransaction(tx.copy(category = cleaned))
+            }
+        }
+    }
+
+    private fun sanitizeCategoryStored(raw: String): String =
+        raw
+            .replace(" • ", " ")
+            .replace('•', ' ')
+            .replace(Regex("\\s+"), " ")
+            .trim()
 
     suspend fun addTransaction(
         type: String,
@@ -260,7 +282,7 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.putTransaction(
             TransactionEntity(
                 txId, "expense", bill.amount,
-                "Tagihan • ${bill.provider}", accountId, now, bill.itemName
+                "Tagihan ${bill.provider}", accountId, now, bill.itemName
             )
         )
     }
@@ -287,7 +309,7 @@ class FinanceRepository(private val db: AppDatabase) {
             dao.putTransaction(
                 TransactionEntity(
                     txId, "expense", it.amount,
-                    "Tagihan • ${it.provider}", accountId, now, it.itemName
+                    "Tagihan ${it.provider}", accountId, now, it.itemName
                 )
             )
         }
