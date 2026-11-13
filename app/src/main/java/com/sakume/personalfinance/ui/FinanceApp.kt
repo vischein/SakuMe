@@ -415,7 +415,8 @@ fun FinanceApp(
                 title = "Transaksi baru",
                 fields = listOf("Nominal", "Catatan"),
                 options = listOf("expense", "income"),
-                optionLabel = "Jenis",
+                optionLabel = "",
+                optionBeforeField = 0,
                 optionDisplay = { if (it == "expense") "Pengeluaran" else "Pemasukan" },
                 extraOptions = accounts.map { it.name },
                 extraOptionSecondary = { n -> accounts.firstOrNull { it.name == n }?.let { rupiah(it.balance) } },
@@ -661,7 +662,8 @@ fun FinanceApp(
                     moneyFields = setOf(1),
                     manualMoneyFields = setOf(1),
                     options = HOLDING_TYPES,
-                    optionLabel = "Jenis",
+                    optionLabel = "",
+                    optionBeforeField = 0,
                     onDismiss = { dialog = "" }
                 ) { v ->
                     val cost = v[1].filter { it.isDigit() }.toLongOrNull() ?: 0L
@@ -854,11 +856,12 @@ fun FinanceApp(
                     "Utang" -> "Tambah utang"
                     else -> "Tambah piutang / utang"
                 },
+                optionDisplay = { if (it == "piutang") "Piutang" else "Utang" },
                 fields = listOf("Nama orang", "Deskripsi", "Nominal"),
                 options = if (debtFilter == "Piutang" || debtFilter == "Utang") emptyList()
                 else listOf("piutang", "utang"),
-                optionLabel = "Jenis",
-                optionDisplay = { if (it == "piutang") "Piutang" else "Utang" },
+                optionLabel = "",
+                optionBeforeField = 0,
                 initialOptionIndex = when (debtFilter) { "Utang" -> 1; else -> 0 },
                 onDismiss = { dialog = "" }
             ) { v ->

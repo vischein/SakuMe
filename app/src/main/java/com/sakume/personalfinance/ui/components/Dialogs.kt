@@ -256,6 +256,7 @@ fun FormDialog(
     options: List<String>,
     optionLabel: String = "Pilihan",
     optionDisplay: (String) -> String = { it },
+    optionBeforeField: Int = -1,
     extraOptions: List<String> = emptyList(),
     extraOptionLabel: String = "Pilihan tambahan",
     tertiaryOptions: List<String> = emptyList(),
@@ -308,11 +309,36 @@ fun FormDialog(
         return "%02d %s %d".format(c.get(Calendar.DAY_OF_MONTH), months[c.get(Calendar.MONTH)], c.get(Calendar.YEAR))
     }
 
+    val optionsBlock: @Composable () -> Unit = {
+        if (options.isNotEmpty()) {
+            if (optionLabel.isNotBlank()) {
+                Text(optionLabel, color = Muted, fontSize = 12.sp)
+            }
+            val isTenor = optionLabel.contains("Tenor", ignoreCase = true)
+            val useChips = isTenor || (
+                options.size <= 3 &&
+                    !optionLabel.contains("rekening", ignoreCase = true) &&
+                    !optionLabel.contains("Dari", ignoreCase = true) &&
+                    !optionLabel.contains("Ke ", ignoreCase = true)
+                )
+            if (useChips) {
+                SegmentedChips(
+                    options = options.map(optionDisplay),
+                    selectedIndex = selectedOpt,
+                    onSelect = { selectedOpt = it }
+                )
+            } else {
+                OptionCardList(options, selectedOpt, optionDisplay, optionSecondary) { selectedOpt = it }
+            }
+        }
+    }
+
     AppBottomSheet(onDismiss) {
         Text(title, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Ink)
         Spacer(Modifier.height(14.dp))
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             fields.forEachIndexed { i, field ->
+                if (optionBeforeField == i) optionsBlock()
                 val suggestions = fieldSuggestions[i].orEmpty()
                 if (suggestions.isNotEmpty() && !(i in moneyFields || field.contains("Nominal", true) || field.contains("Saldo", true) || field.contains("Target", true))) {
                     Box {
@@ -323,14 +349,12 @@ fun FormDialog(
                             isMoney = false
                         )
                     }
-                    if (suggestions.isNotEmpty()) {
-                        val shown = suggestions.take(12)
-                        SegmentedChips(
-                            options = shown,
-                            selectedIndex = shown.indexOfFirst { it.equals(values[i], ignoreCase = true) },
-                            onSelect = { values[i] = shown[it] }
-                        )
-                    }
+                    val shown = suggestions.take(12)
+                    SegmentedChips(
+                        options = shown,
+                        selectedIndex = shown.indexOfFirst { it.equals(values[i], ignoreCase = true) },
+                        onSelect = { values[i] = shown[it] }
+                    )
                 } else {
                     val money = i in moneyFields || field.contains("Nominal", true) || field.contains("Saldo", true) || field.contains("Target", true)
                     val autoZeros = money &&
@@ -378,25 +402,7 @@ fun FormDialog(
                     }
                 }
             }
-            if (options.isNotEmpty()) {
-                Text(optionLabel, color = Muted, fontSize = 12.sp)
-                val isTenor = optionLabel.contains("Tenor", ignoreCase = true)
-                val useChips = isTenor || (
-                    options.size <= 3 &&
-                        !optionLabel.contains("rekening", ignoreCase = true) &&
-                        !optionLabel.contains("Dari", ignoreCase = true) &&
-                        !optionLabel.contains("Ke ", ignoreCase = true)
-                    )
-                if (useChips) {
-                    SegmentedChips(
-                        options = options.map(optionDisplay),
-                        selectedIndex = selectedOpt,
-                        onSelect = { selectedOpt = it }
-                    )
-                } else {
-                    OptionCardList(options, selectedOpt, optionDisplay, optionSecondary) { selectedOpt = it }
-                }
-            }
+            if (optionBeforeField !in fields.indices) optionsBlock()
             if (extraOptions.isNotEmpty()) {
                 Text(extraOptionLabel, color = Muted, fontSize = 12.sp)
                 OptionCardList(extraOptions, selectedExtra, secondary = extraOptionSecondary) { selectedExtra = it }

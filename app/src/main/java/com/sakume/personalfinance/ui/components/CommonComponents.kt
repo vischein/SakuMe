@@ -318,7 +318,6 @@ fun SegmentedChips(
                         .offset(x = offsetX)
                         .width(segW)
                         .fillMaxHeight()
-                        .padding(3.dp)
                         .clip(RoundedCornerShape(50))
                         .background(Ink)
                     )
