@@ -32,6 +32,16 @@ class FinanceRepository(private val db: AppDatabase) {
         val order = dao.maxAccountSortOrder() + 1
         dao.putAccount(AccountEntity(id(), cleanName, type, opening, openingBalance = opening, sortOrder = order))
     }
+    
+    suspend fun renameAccount(accountId: String, newName: String) = db.withTransaction {
+    val cleanName = newName.trim()
+         require(cleanName.isNotBlank()) { "Nama rekening wajib diisi" }
+    val account = dao.account(accountId) ?: error("Rekening tidak ditemukan")
+         require(dao.allAccounts().none { it.id != accountId && it.name.equals(cleanName, ignoreCase = true) }) {
+             "Nama rekening sudah digunakan"
+         }
+         if (account.name != cleanName) dao.putAccount(account.copy(name = cleanName))
+    }
 
     suspend fun deleteAccount(accountId: String) = db.withTransaction {
         val account = dao.account(accountId) ?: error("Rekening tidak ditemukan")

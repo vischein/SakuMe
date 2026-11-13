@@ -281,6 +281,7 @@ fun FinanceApp(
                             onAddTx = { dialog = "transaction" },
                             onAccountClick = { account -> historyAccountId = account.id; subScreen = "txHistory" },
                             onCash = { dialog = "cash" },
+                            onRename = { a -> dialog = "renameaccount:${a.id}" },
                             onDelete = { a -> dialog = "deleteaccount:${a.id}" },
                             onReorder = { ids -> vm.reorderAccounts(ids) },
                             onBack = { subScreen = null }
@@ -697,6 +698,24 @@ fun FinanceApp(
                 },
                 cancel = { dialog = "" }
             )
+            
+            dialog.startsWith("renameaccount:") -> {
+                val acc = accounts.firstOrNull { it.id == dialog.substringAfter(":") }
+                if (acc == null) dialog = ""
+                else FormDialog(
+                    title = "Ubah nama rekening",
+                    fields = listOf("Nama rekening"),
+                    options = emptyList(),
+                    initialValues = listOf(acc.name),
+                    onDismiss = { dialog = "" }
+                ) { v ->
+                if (v[0].isBlank()) error = "Nama rekening wajib diisi"
+                else {
+                    vm.renameAccount(acc.id, v[0]) { error = it }
+                    dialog = ""
+                    }
+                }
+            }
 
             dialog.startsWith("deleteaccount:") -> {
                 val acc = accounts.firstOrNull { it.id == dialog.substringAfter(":") }

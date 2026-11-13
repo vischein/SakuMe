@@ -38,7 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.data.AccountEntity
 import com.sakume.personalfinance.data.TransactionEntity
 import com.sakume.personalfinance.ui.components.EmptyHint
-import com.sakume.personalfinance.ui.components.SelectableChip
+import com.sakume.personalfinance.ui.components.SegmentedChips
 import com.sakume.personalfinance.ui.components.TransactionRow
 import com.sakume.personalfinance.ui.buildDisplayTransactions
 import com.sakume.personalfinance.ui.formatDate
@@ -153,17 +153,23 @@ fun TransactionHistoryScreen(
             }
         }
 
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 8.dp)
-        ) {
-            item { SelectableChip("Semua", filter == "all") { filter = "all" } }
-            item { SelectableChip("Bulan ini", filter == "month") { filter = "month" } }
-            item {
-                val dayLabel = if (filter == "day" && dayMillis != null) formatDate(dayMillis!!) else "Pilih tanggal"
-                SelectableChip(dayLabel, filter == "day") { openDatePicker() }
+        val dayLabel = if (filter == "day" && dayMillis != null) formatDate(dayMillis!!) else "Pilih tanggal"
+            SegmentedChips(
+                options = listOf("Semua", "Bulan ini", dayLabel),
+                selectedIndex = when (filter) {
+                    "all" -> 0
+                    "month" -> 1
+                    else -> 2
+                },
+            modifier = Modifier.padding(vertical = 8.dp),
+            onSelect = {
+            when (it) {
+                0 -> filter = "all"
+                1 -> filter = "month"
+                else -> openDatePicker()
             }
         }
+        )
 
         Spacer(Modifier.height(4.dp))
 

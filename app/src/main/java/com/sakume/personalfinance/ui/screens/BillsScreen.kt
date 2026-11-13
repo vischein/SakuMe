@@ -44,7 +44,7 @@ import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.data.AccountEntity
 import com.sakume.personalfinance.data.BillEntity
 import com.sakume.personalfinance.ui.components.EmptyHint
-import com.sakume.personalfinance.ui.components.SelectableChip
+import com.sakume.personalfinance.ui.components.SegmentedChips
 import com.sakume.personalfinance.ui.dueInLabel
 import com.sakume.personalfinance.ui.formatDate
 import com.sakume.personalfinance.ui.monthKey
@@ -113,11 +113,11 @@ fun BillsScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(providers) { p ->
-                SelectableChip(label = p, selected = provider == p, onClick = { provider = p })
-            }
-        }
+        SegmentedChips(
+            options = providers,
+            selectedIndex = providers.indexOf(provider).coerceAtLeast(0),
+            onSelect = { provider = providers[it] }
+        )
 
         Spacer(Modifier.height(12.dp))
 

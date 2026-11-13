@@ -324,27 +324,12 @@ fun FormDialog(
                         )
                     }
                     if (suggestions.isNotEmpty()) {
-                        Text("Pilih yang sudah ada", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
-                        androidx.compose.foundation.lazy.LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(suggestions.take(12).size) { idx ->
-                                val s = suggestions[idx]
-                                val selected = values[i].equals(s, ignoreCase = true)
-                                Text(
-                                    text = s,
-                                    color = if (selected) Color.White else Ink,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(if (selected) Ink else FieldBg)
-                                        .clickable { values[i] = s }
-                                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                                )
-                            }
-                        }
+                        val shown = suggestions.take(12)
+                        SegmentedChips(
+                            options = shown,
+                            selectedIndex = shown.indexOfFirst { it.equals(values[i], ignoreCase = true) },
+                            onSelect = { values[i] = shown[it] }
+                        )
                     }
                 } else {
                     val money = i in moneyFields || field.contains("Nominal", true) || field.contains("Saldo", true) || field.contains("Target", true)
@@ -403,19 +388,11 @@ fun FormDialog(
                         !optionLabel.contains("Ke ", ignoreCase = true)
                     )
                 if (useChips) {
-                    androidx.compose.foundation.lazy.LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(options.size) { i ->
-                            val opt = options[i]
-                            SelectableChip(
-                                label = optionDisplay(opt),
-                                selected = selectedOpt == i,
-                                onClick = { selectedOpt = i }
-                            )
-                        }
-                    }
+                    SegmentedChips(
+                        options = options.map(optionDisplay),
+                        selectedIndex = selectedOpt,
+                        onSelect = { selectedOpt = it }
+                    )
                 } else {
                     OptionCardList(options, selectedOpt, optionDisplay, optionSecondary) { selectedOpt = it }
                 }
@@ -471,8 +448,11 @@ fun CashTransferDialog(
         Spacer(Modifier.height(14.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SelectableChip(label = "Tarik tunai", selected = isWithdraw) { isWithdraw = true }
-            SelectableChip(label = "Setor tunai", selected = !isWithdraw) { isWithdraw = false }
+            SegmentedChips(
+                options = listOf("Tarik tunai", "Setor tunai"),
+                selectedIndex = if (isWithdraw) 0 else 1,
+                onSelect = { isWithdraw = it == 0 }
+            )
         }
         Spacer(Modifier.height(14.dp))
 
@@ -699,15 +679,11 @@ fun WeeklyScheduleDialog(
                 autoThousand = true
             )
             Text("Hari (Senin–Minggu)", color = Muted, fontSize = 12.sp)
-            androidx.compose.foundation.lazy.LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                items(scheduleDays.size) { i ->
-                    val (value, name) = scheduleDays[i]
-                    SelectableChip(label = name, selected = day == value, onClick = { day = value })
-                }
-            }
+            SegmentedChips(
+                options = scheduleDays.map { it.second },
+                selectedIndex = scheduleDays.indexOfFirst { it.first == day },
+                onSelect = { day = scheduleDays[it].first }
+            )
             Text("Dari rekening", color = Muted, fontSize = 12.sp)
             AccountCardList(accounts, selected) { selected = it }
         }

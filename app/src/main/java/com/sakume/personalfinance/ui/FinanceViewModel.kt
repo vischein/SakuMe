@@ -40,7 +40,10 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addAccount(name: String, type: String, balance: Long, error: (String) -> Unit) =
         run({ addAccount(name, type, balance) }, error)
-
+        
+    fun renameAccount(accountId: String, newName: String, error: (String) -> Unit) =
+        run({ renameAccount(accountId, newName) }, error)    
+        
     fun deleteAccount(accountId: String, error: (String) -> Unit) =
         run({ deleteAccount(accountId) }, error)
 

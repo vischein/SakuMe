@@ -53,7 +53,7 @@ import com.sakume.personalfinance.data.DebtEntity
 import com.sakume.personalfinance.data.SalaryScheduleEntity
 import com.sakume.personalfinance.ui.AppPrefs
 import com.sakume.personalfinance.ui.components.EmptyHint
-import com.sakume.personalfinance.ui.components.SelectableChip
+import com.sakume.personalfinance.ui.components.SegmentedChips
 import com.sakume.personalfinance.ui.components.StatTile
 import com.sakume.personalfinance.ui.formatDate
 import com.sakume.personalfinance.ui.rupiah

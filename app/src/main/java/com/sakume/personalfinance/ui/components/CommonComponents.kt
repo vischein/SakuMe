@@ -44,6 +44,17 @@ import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Muted
 import com.sakume.personalfinance.ui.theme.Red
 import com.sakume.personalfinance.ui.theme.RedSoft
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.Dp
 
 @Composable
 fun EmptyHint(text: String) {
@@ -275,4 +286,70 @@ fun SelectableChip(
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp)
     )
+}
+
+@Composable
+fun SegmentedChips(
+    options: List<String>,
+    selectedIndex: Int,
+    modifier: Modifier = Modifier,
+    minSegmentWidth: Dp = 84.dp,
+    onSelect: (Int) -> Unit
+) {
+    if (options.isEmpty()) return
+    val count = options.size
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val segW = maxOf(maxWidth / count, minSegmentWidth)
+        val offsetX by animateDpAsState(
+            targetValue = segW * selectedIndex.coerceIn(0, count - 1),
+            label = "segmentOffset"
+        )
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(50))
+                .background(Color.White)
+                .horizontalScroll(rememberScrollState())
+        ) {
+            Box(Modifier.width(segW * count).height(44.dp)) {
+                if (selectedIndex in 0 until count) {
+                    Box(
+                        Modifier
+                        .offset(x = offsetX)
+                        .width(segW)
+                        .fillMaxHeight()
+                        .padding(3.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Ink)
+                    )
+                }
+                Row(Modifier.fillMaxSize()) {
+                    options.forEachIndexed { i, label ->
+                        val selected = i == selectedIndex
+                        Box(
+                            Modifier
+                                .width(segW)
+                                .fillMaxHeight()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { onSelect(i) }
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (selected) Color.White else Ink,
+                                fontSize = 13.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

@@ -44,7 +44,7 @@ import com.sakume.personalfinance.data.BillEntity
 import com.sakume.personalfinance.data.DebtEntity
 import com.sakume.personalfinance.data.TransactionEntity
 import com.sakume.personalfinance.ui.components.EmptyHint
-import com.sakume.personalfinance.ui.components.SelectableChip
+import com.sakume.personalfinance.ui.components.SegmentedChips
 import com.sakume.personalfinance.ui.displayCategory
 import com.sakume.personalfinance.ui.formatDate
 import com.sakume.personalfinance.ui.monthLabel
@@ -282,15 +282,11 @@ fun AnalyticsScreen(
         }
 
         item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(periods.size) { i ->
-                    SelectableChip(
-                        label = periods[i].label,
-                        selected = periodIndex == i,
-                        onClick = { periodIndex = i }
-                    )
-                }
-            }
+            SegmentedChips(
+                options = periods.map { it.label },
+                selectedIndex = periodIndex,
+                onSelect = { periodIndex = it }
+            )
         }
 
         item {

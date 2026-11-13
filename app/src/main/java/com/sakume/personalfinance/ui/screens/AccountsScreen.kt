@@ -75,6 +75,8 @@ import com.sakume.personalfinance.ui.theme.PanelSoft
 import com.sakume.personalfinance.ui.theme.Red
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import androidx.compose.material.icons.filled.Edit
+import com.sakume.personalfinance.ui.theme.CardBg
 
 @Composable
 fun ManageAccountsScreen(
@@ -85,11 +87,17 @@ fun ManageAccountsScreen(
     onAddTx: () -> Unit,
     onAccountClick: (AccountEntity) -> Unit = {},
     onCash: () -> Unit = {},
+    onRename: (AccountEntity) -> Unit = {},
     onDelete: (AccountEntity) -> Unit,
     onReorder: (List<String>) -> Unit,
-    onBack: (() -> Unit)? = null
+    onBack: (() -> Unit)? = null,
 ) {
-    val bankAccounts = accounts.filterNot { it.type.equals("Cash", true) || it.name.equals("Dompet Tunai", true) || it.name.equals("Cash", true) }
+    val bankAccounts =
+        accounts.filterNot {
+            it.type.equals("Cash", true) ||
+                it.name.equals("Dompet Tunai", true) ||
+                it.name.equals("Cash", true)
+        }
     var localList by remember { mutableStateOf(bankAccounts) }
     var mode by remember { mutableStateOf("normal") }
     var menuOpen by remember { mutableStateOf(false) }
@@ -102,7 +110,10 @@ fun ManageAccountsScreen(
         if (draggingId == null) localList = accounts
     }
 
-    fun moveItem(from: Int, to: Int) {
+    fun moveItem(
+        from: Int,
+        to: Int,
+    ) {
         if (from == to || from !in localList.indices || to !in localList.indices) return
         val mutable = localList.toMutableList()
         val item = mutable.removeAt(from)
@@ -114,28 +125,24 @@ fun ManageAccountsScreen(
         Row(
             Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                if (onBack != null) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali", tint = Ink)
-                    }
-                }
                 Column {
                     Text("Rekening", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Ink)
                     Text(
                         when (mode) {
                             "reorder" -> "Geser kartu untuk mengubah urutan"
+                            "rename" -> "Ketuk rekening untuk ubah nama"
                             "delete" -> "Ketuk ikon hapus pada rekening"
                             else -> "Kelola rekening & transfer"
                         },
                         color = Muted,
-                        fontSize = 12.sp
+                        fontSize = 12.sp,
                     )
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (mode != "normal") {
                     Button(
                         onClick = {
@@ -144,35 +151,51 @@ fun ManageAccountsScreen(
                             draggingId = null
                         },
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Ink),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                        colors = ButtonDefaults.buttonColors(containerColor = CardBg),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                     ) {
-                        Text("Selesai", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Selesai", color = Ink, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
                 Box {
                     Box(
-                                Modifier
-                                .size(42.dp)
-                                .clip(CircleShape)
-                                .background(Ink)
-                                .clickable(onClick = { menuOpen = true }),
-                                contentAlignment = Alignment.Center
+                        Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(Ink)
+                            .clickable(onClick = { menuOpen = true }),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "Menu", tint = Color.White)
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
                             text = { Text("Ubah urutan") },
-                            onClick = { mode = "reorder"; menuOpen = false }
+                            onClick = {
+                                mode = "reorder"
+                                menuOpen = false
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Ubah nama rekening") },
+                            onClick = {
+                                mode = "rename"
+                                menuOpen = false
+                            },
                         )
                         DropdownMenuItem(
                             text = { Text("Hapus rekening") },
-                            onClick = { mode = "delete"; menuOpen = false }
+                            onClick = {
+                                mode = "delete"
+                                menuOpen = false
+                            },
                         )
                         DropdownMenuItem(
                             text = { Text("Tambah rekening") },
-                            onClick = { onAdd(); menuOpen = false }
+                            onClick = {
+                                onAdd()
+                                menuOpen = false
+                            },
                         )
                     }
                 }
@@ -181,7 +204,7 @@ fun ManageAccountsScreen(
 
         Row(
             Modifier.fillMaxWidth().padding(vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             CompactAction(
                 icon = Icons.Filled.Add,
@@ -189,7 +212,7 @@ fun ManageAccountsScreen(
                 bg = Ink,
                 fg = Color.White,
                 modifier = Modifier.weight(1f),
-                onClick = onAddTx
+                onClick = onAddTx,
             )
             CompactAction(
                 icon = Icons.Filled.Payments,
@@ -197,7 +220,7 @@ fun ManageAccountsScreen(
                 bg = Color.White,
                 fg = Ink,
                 modifier = Modifier.weight(1f),
-                onClick = onCash
+                onClick = onCash,
             )
             CompactAction(
                 icon = Icons.Filled.SwapHoriz,
@@ -205,7 +228,7 @@ fun ManageAccountsScreen(
                 bg = Ink,
                 fg = Color.White,
                 modifier = Modifier.weight(1f),
-                onClick = onTransfer
+                onClick = onTransfer,
             )
         }
 
@@ -215,7 +238,7 @@ fun ManageAccountsScreen(
             LazyColumn(
                 state = listState,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 24.dp, top = 2.dp)
+                contentPadding = PaddingValues(bottom = 24.dp, top = 2.dp),
             ) {
                 itemsIndexed(localList, key = { _, a -> a.id }) { index, a ->
                     val count = tx.count { it.accountId == a.id }
@@ -227,8 +250,13 @@ fun ManageAccountsScreen(
                         isDragging = isDragging,
                         dragOffsetY = if (isDragging) dragOffsetY else 0f,
                         onDelete = { onDelete(a) },
+                        onRename = { onRename(a) },
                         onClick = {
-                            if (mode == "normal") onAccountClick(a)
+                            if (mode == "normal") {
+                                onAccountClick(a)
+                            } else if (mode == "rename") {
+                                onRename(a)
+                            }
                         },
                         onDragStart = {
                             draggingId = a.id
@@ -252,7 +280,7 @@ fun ManageAccountsScreen(
                                 draggingId = null
                                 onReorder(localList.map { it.id })
                             }
-                        }
+                        },
                     )
                 }
             }
@@ -267,7 +295,7 @@ private fun CompactAction(
     bg: Color,
     fg: Color,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
     Box(
         modifier
@@ -276,11 +304,11 @@ private fun CompactAction(
             .background(bg)
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+            horizontalArrangement = Arrangement.Center,
         ) {
             Icon(icon, null, tint = fg, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(4.dp))
@@ -290,7 +318,7 @@ private fun CompactAction(
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -304,16 +332,18 @@ private fun AccountCard(
     isDragging: Boolean,
     dragOffsetY: Float,
     onDelete: () -> Unit,
+    onRename: () -> Unit,
     onClick: () -> Unit,
     onDragStart: () -> Unit,
     onDrag: (Float) -> Unit,
-    onDragEnd: () -> Unit
+    onDragEnd: () -> Unit,
 ) {
-    val icon = when {
-        account.type.equals("Cash", true) -> Icons.Filled.Payments
-        account.type.equals("E-Wallet", true) -> Icons.Filled.PhoneAndroid
-        else -> Icons.Filled.AccountBalance
-    }
+    val icon =
+        when {
+            account.type.equals("Cash", true) -> Icons.Filled.Payments
+            account.type.equals("E-Wallet", true) -> Icons.Filled.PhoneAndroid
+            else -> Icons.Filled.AccountBalance
+        }
     Box(
         Modifier
             .fillMaxWidth()
@@ -323,9 +353,8 @@ private fun AccountCard(
             .clip(RoundedCornerShape(20.dp))
             .background(Color.White)
             .then(
-                if (mode == "normal") Modifier.clickable(onClick = onClick) else Modifier
-            )
-            .padding(horizontal = 14.dp, vertical = 14.dp)
+                if (mode == "normal" || mode == "rename") Modifier.clickable(onClick = onClick) else Modifier,
+            ).padding(horizontal = 14.dp, vertical = 14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (mode == "reorder") {
@@ -333,25 +362,26 @@ private fun AccountCard(
                     Icons.Filled.DragHandle,
                     null,
                     tint = Muted,
-                    modifier = Modifier
-                        .size(20.dp)
-                        .pointerInput(account.id) {
-                            detectDragGestures(
-                                onDragStart = { onDragStart() },
-                                onDragEnd = { onDragEnd() },
-                                onDragCancel = { onDragEnd() },
-                                onDrag = { change, amount ->
-                                    change.consume()
-                                    onDrag(amount.y)
-                                }
-                            )
-                        }
+                    modifier =
+                        Modifier
+                            .size(20.dp)
+                            .pointerInput(account.id) {
+                                detectDragGestures(
+                                    onDragStart = { onDragStart() },
+                                    onDragEnd = { onDragEnd() },
+                                    onDragCancel = { onDragEnd() },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        onDrag(amount.y)
+                                    },
+                                )
+                            },
                 )
                 Spacer(Modifier.width(8.dp))
             }
             Box(
                 Modifier.size(42.dp).background(Paper, CircleShape),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(icon, null, tint = Ink, modifier = Modifier.size(20.dp))
             }
@@ -363,17 +393,21 @@ private fun AccountCard(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     rupiah(account.balance),
                     color = Ink,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+                    fontSize = 16.sp,
                 )
             }
-            if (mode == "delete") {
+            if (mode == "rename") {
+                IconButton(onClick = onRename, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.Edit, null, tint = Ink, modifier = Modifier.size(20.dp))
+                }
+            } else if (mode == "delete") {
                 IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Filled.Delete, null, tint = Red, modifier = Modifier.size(20.dp))
                 }
@@ -383,13 +417,13 @@ private fun AccountCard(
                         account.type.uppercase(),
                         color = Muted,
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
                         "$txCount trx",
                         color = Muted,
-                        fontSize = 11.sp
+                        fontSize = 11.sp,
                     )
                 }
             }
