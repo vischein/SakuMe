@@ -29,12 +29,20 @@ import androidx.compose.material.icons.filled.CallReceived
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import com.sakume.personalfinance.ui.AppPrefs
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,6 +87,8 @@ import com.sakume.personalfinance.ui.theme.Red
 import com.sakume.personalfinance.ui.theme.RedSoft
 
 
+private const val HIDDEN_MONEY = "Rp ••••••"
+
 @Composable
 fun HomeScreen(
     accounts: List<AccountEntity>,
@@ -90,6 +100,11 @@ fun HomeScreen(
     onOpenSettings: () -> Unit = {},
     onSeeAllTx: () -> Unit = {}
 ) {
+    val context = LocalContext.current
+    var hideBalance by remember { mutableStateOf(AppPrefs.hideHomeBalance(context)) }
+    // Nominal hanya disamarkan untuk tampilan; data & perhitungan tidak berubah.
+    fun money(value: Long): String = if (hideBalance) HIDDEN_MONEY else rupiah(value)
+
     val total = accounts.sumOf { it.balance }
     val monthStart = startOfMonthMillis()
     val monthTx = tx.filter { it.dateMillis >= monthStart }
@@ -142,9 +157,31 @@ fun HomeScreen(
                     .background(Brush.verticalGradient(listOf(Ink, Panel)))
                     .padding(22.dp)
             ) {
-                Text("Total saldo", color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Total saldo", color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp)
+                    Spacer(Modifier.width(4.dp))
+                    Box(
+                        Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .clickable(
+                                onClickLabel = if (hideBalance) "Tampilkan nominal" else "Sembunyikan nominal"
+                            ) {
+                                hideBalance = !hideBalance
+                                AppPrefs.setHideHomeBalance(context, hideBalance)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            if (hideBalance) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = if (hideBalance) "Tampilkan nominal" else "Sembunyikan nominal",
+                            tint = Color.White.copy(alpha = 0.65f),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
-                Text(rupiah(total), color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                Text(money(total), color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(20.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     QuickAction(Icons.Filled.Add, "Tambah") { onAction("transaction") }
@@ -170,13 +207,13 @@ fun HomeScreen(
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Cash", color = Color.White.copy(alpha = 0.72f), fontSize = 12.sp)
-                        Text(rupiah(cashAccounts.sumOf { it.balance }), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Text(money(cashAccounts.sumOf { it.balance }), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     }
                 }
                 Spacer(Modifier.height(14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MetricChip("Masuk bulan ini", rupiah(moneyIn), Green, Modifier.weight(1f))
-                    MetricChip("Keluar bulan ini", rupiah(moneyOut), Red, Modifier.weight(1f))
+                    MetricChip("Masuk bulan ini", money(moneyIn), Green, Modifier.weight(1f))
+                    MetricChip("Keluar bulan ini", money(moneyOut), Red, Modifier.weight(1f))
                 }
             }
         }
@@ -188,7 +225,7 @@ fun HomeScreen(
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(bankAccounts) { a ->
-                        AccountMiniCard(a, isCash = false) { onAction("accountHistory:${a.id}") }
+                        AccountMiniCard(a, isCash = false, hidden = hideBalance) { onAction("accountHistory:${a.id}") }
                     }
                 }
             }
@@ -309,7 +346,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun AccountMiniCard(a: AccountEntity, isCash: Boolean = false, onClick: () -> Unit) {
+private fun AccountMiniCard(a: AccountEntity, isCash: Boolean = false, hidden: Boolean = false, onClick: () -> Unit) {
     val bg = Ink
     Column(
         Modifier
@@ -327,6 +364,6 @@ private fun AccountMiniCard(a: AccountEntity, isCash: Boolean = false, onClick: 
         )
         Text(a.name, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(6.dp))
-        Text(rupiah(a.balance), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Text(if (hidden) HIDDEN_MONEY else rupiah(a.balance), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
     }
 }

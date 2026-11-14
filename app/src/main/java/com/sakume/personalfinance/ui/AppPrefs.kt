@@ -7,6 +7,7 @@ object AppPrefs {
 
     private const val KEY_TRAILING_ZEROS = "trailing_zeros"
     private const val KEY_NOTIFICATIONS = "notifications_enabled"
+    private const val KEY_HIDE_HOME_BALANCE = "hide_home_balance"
     private const val KEY_MAX_CATCHUP_DAYS = "max_catchup_days"
     private const val KEY_BILL_REMINDER = "bill_reminder_enabled"
     private const val KEY_BILL_REMINDER_HOUR = "bill_reminder_hour"
@@ -49,6 +50,14 @@ object AppPrefs {
     }
 
     fun zerosLabel(n: Int): String = if (n <= 0) "Off" else "0".repeat(n)
+
+    /** Sembunyikan nominal di Home saja (total saldo, cash, masuk/keluar, kartu rekening). */
+    fun hideHomeBalance(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_HIDE_HOME_BALANCE, false)
+
+    fun setHideHomeBalance(context: Context, hidden: Boolean) {
+        prefs(context).edit().putBoolean(KEY_HIDE_HOME_BALANCE, hidden).apply()
+    }
 
     fun notificationsEnabled(context: Context): Boolean =
         prefs(context).getBoolean(KEY_NOTIFICATIONS, true)

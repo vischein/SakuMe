@@ -308,7 +308,7 @@ fun SegmentedChips(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(50))
-                .background(Color.White)
+                .background(Color(0xFFE8E8E8))
                 .horizontalScroll(rememberScrollState())
         ) {
             Box(Modifier.width(segW * count).height(44.dp)) {
@@ -319,7 +319,7 @@ fun SegmentedChips(
                         .width(segW)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(50))
-                        .background(Ink)
+                        .background(Color.White)
                     )
                 }
                 Row(Modifier.fillMaxSize()) {
@@ -338,7 +338,7 @@ fun SegmentedChips(
                         ) {
                             Text(
                                 text = label,
-                                color = if (selected) Color.White else Ink,
+                                color = if (selected) Ink else Muted,
                                 fontSize = 13.sp,
                                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                                 maxLines = 1,

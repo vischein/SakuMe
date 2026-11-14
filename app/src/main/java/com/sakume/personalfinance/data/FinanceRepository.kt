@@ -872,11 +872,6 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.deleteDebt(debtId)
     }
 
-    /**
-     * Snapshot SEMUA tabel database dalam satu transaksi (konsisten).
-     * PENTING: setiap kali menambah tabel/entity baru, tambahkan juga di sini, di [BackupData],
-     * di [importJson] (clear + put) dan di [validateBackup]. Kalau lupa, datanya tidak ikut backup.
-     */
     suspend fun snapshot(): BackupData = db.withTransaction {
         BackupData(
             accounts = dao.allAccounts(),
@@ -893,14 +888,13 @@ class FinanceRepository(private val db: AppDatabase) {
 
     suspend fun exportJson(): String = BackupCodec.encode(snapshot())
 
-    /** Mengembalikan data yang dibaca dari file, supaya pemanggil bisa ikut memulihkan pengaturan. */
     suspend fun importJson(json: String): BackupData = db.withTransaction {
         val decoded = if (BackupCodec.isLegacySakuMe(json)) {
             BackupCodec.decodeLegacySakuMe(json)
         } else {
             BackupCodec.decode(json)
         }
-        val data = normalizeDebts(decoded)
+        val data = normalizeBills(normalizeDebts(decoded))
         validateBackup(data)
         dao.clearAccounts()
         dao.clearTransactions()
@@ -932,6 +926,44 @@ class FinanceRepository(private val db: AppDatabase) {
             } else d
         }
         return data.copy(transactions = txs, debts = debts)
+    }
+
+    private fun normalizeBills(data: BackupData): BackupData {
+        val accountIds = data.accounts.map { it.id }.toSet()
+        val txById = data.transactions.associateBy { it.id }
+        val claimed = HashSet<String>()
+        data.debts.mapNotNullTo(claimed) { it.paymentTransactionId }
+        data.bills.forEach { b ->
+            val tx = b.paymentTransactionId?.let { txById[it] }
+            if (b.isPaid && tx != null && tx.type == "expense" && tx.amount == b.amount) claimed += tx.id
+        }
+
+        val bills = data.bills.map { bill ->
+            if (!bill.isPaid) {
+                return@map bill.copy(paidAccountId = null, paidAtMillis = null, paymentTransactionId = null)
+            }
+            val accId = bill.paidAccountId?.takeIf { it in accountIds }
+            val linked = bill.paymentTransactionId?.let { txById[it] }
+                ?.takeIf { it.type == "expense" && it.amount == bill.amount && it.debtId == null }
+
+            val tx = linked ?: data.transactions
+                .asSequence()
+                .filter {
+                    it.type == "expense" && it.amount == bill.amount && it.debtId == null &&
+                        it.transferGroupId == null && it.id !in claimed &&
+                        it.category == "Tagihan ${bill.provider}" &&
+                        (accId == null || it.accountId == accId)
+                }
+                .minByOrNull { Math.abs(it.dateMillis - (bill.paidAtMillis ?: bill.dueDateMillis)) }
+                ?.also { claimed += it.id }
+
+            bill.copy(
+                paidAccountId = tx?.accountId ?: accId,
+                paidAtMillis = bill.paidAtMillis ?: tx?.dateMillis ?: bill.dueDateMillis,
+                paymentTransactionId = tx?.id
+            )
+        }
+        return data.copy(bills = bills)
     }
 
     private fun validateBackup(data: BackupData) {
@@ -974,9 +1006,11 @@ class FinanceRepository(private val db: AppDatabase) {
             if (!bill.isPaid) {
                 bill.paidAccountId == null && bill.paidAtMillis == null && bill.paymentTransactionId == null
             } else {
-                val tx = data.transactions.firstOrNull { it.id == bill.paymentTransactionId }
-                bill.paidAccountId != null && bill.paidAtMillis != null && tx != null && tx.type == "expense" &&
-                    tx.accountId == bill.paidAccountId && tx.amount == bill.amount
+                val txId = bill.paymentTransactionId
+                val tx = txId?.let { id -> data.transactions.firstOrNull { it.id == id } }
+                bill.paidAtMillis != null &&
+                    (txId == null || (tx != null && tx.type == "expense" && tx.amount == bill.amount &&
+                        (bill.paidAccountId == null || tx.accountId == bill.paidAccountId)))
             }
         }) { "Backup memiliki status pembayaran tagihan yang tidak konsisten" }
         val debtIds = data.debts.map { it.id }.toSet()
