@@ -110,7 +110,9 @@ data class DebtEntity(
 
     val paymentTransactionId: String? = null,
 
-    val paidAmount: Long = 0
+    val paidAmount: Long = 0,
+
+    val dueDateMillis: Long? = null
 ) {
     val remaining: Long get() = (amount - paidAmount).coerceAtLeast(0L)
 }

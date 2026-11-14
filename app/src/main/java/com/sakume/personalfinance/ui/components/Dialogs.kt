@@ -274,6 +274,8 @@ fun FormDialog(
     requiredFields: Set<Int> = emptySet(),
     includeDueDate: Boolean = false,
     dueDateLabel: String = "Tanggal jatuh tempo",
+    dueDateOptional: Boolean = false,
+    initialDueDateMillis: Long? = null,
     initialValues: List<String> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (List<String>) -> Unit
@@ -299,7 +301,7 @@ fun FormDialog(
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        mutableStateOf(cal.timeInMillis)
+        mutableStateOf<Long?>(initialDueDateMillis ?: if (dueDateOptional) null else cal.timeInMillis)
     }
     val context = LocalContext.current
 
@@ -376,7 +378,7 @@ fun FormDialog(
                             .clip(RoundedCornerShape(12.dp))
                             .background(FieldBg)
                             .clickable {
-                                val c = Calendar.getInstance().apply { timeInMillis = dueDateMillis }
+                                val c = Calendar.getInstance().apply { timeInMillis = dueDateMillis ?: System.currentTimeMillis() }
                                 DatePickerDialog(
                                     context,
                                     { _, y, m, d ->
@@ -394,11 +396,36 @@ fun FormDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val due = dueDateMillis
                         Column {
-                            Text(formatDue(dueDateMillis), color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                            Text("Ketuk untuk pilih tanggal", color = Muted, fontSize = 11.sp)
+                            Text(
+                                if (due != null) formatDue(due) else "Tidak diatur",
+                                color = if (due != null) Ink else Muted,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp
+                            )
+                            Text(
+                                if (dueDateOptional) "Ketuk untuk pilih tanggal (opsional)" else "Ketuk untuk pilih tanggal",
+                                color = Muted,
+                                fontSize = 11.sp
+                            )
                         }
-                        Text("📅", fontSize = 18.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (dueDateOptional && due != null) {
+                                Text(
+                                    "Hapus",
+                                    color = Muted,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { dueDateMillis = null }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            Text("📅", fontSize = 18.sp)
+                        }
                     }
                 }
             }
@@ -417,7 +444,7 @@ fun FormDialog(
             SheetButton("Batal", onDismiss, Modifier.weight(1f), primary = false)
             SheetButton("Simpan", {
                 val result = values.toMutableList()
-                if (includeDueDate) result.add(dueDateMillis.toString())
+                if (includeDueDate) result.add(dueDateMillis?.toString().orEmpty())
                 if (options.isNotEmpty()) result.add(options.getOrElse(selectedOpt) { options.first() })
                 if (extraOptions.isNotEmpty()) result.add(extraOptions.getOrElse(selectedExtra) { extraOptions.first() })
                 if (tertiaryOptions.isNotEmpty()) result.add(tertiaryOptions.getOrElse(selectedTertiary) { tertiaryOptions.first() })

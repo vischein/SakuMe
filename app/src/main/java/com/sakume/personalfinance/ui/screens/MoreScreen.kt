@@ -24,6 +24,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CallMade
 import androidx.compose.material.icons.filled.CallReceived
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -55,11 +58,15 @@ import com.sakume.personalfinance.ui.AppPrefs
 import com.sakume.personalfinance.ui.components.EmptyHint
 import com.sakume.personalfinance.ui.components.SegmentedChips
 import com.sakume.personalfinance.ui.components.StatTile
+import com.sakume.personalfinance.ui.daysUntilDue
+import com.sakume.personalfinance.ui.dueInLabel
 import com.sakume.personalfinance.ui.formatDate
+import com.sakume.personalfinance.ui.shareDebtReminder
 import com.sakume.personalfinance.ui.rupiah
 import com.sakume.personalfinance.ui.theme.Accent
 import com.sakume.personalfinance.ui.theme.AccentSoft
 import com.sakume.personalfinance.ui.theme.CardBg
+import com.sakume.personalfinance.ui.theme.Gold
 import com.sakume.personalfinance.ui.theme.Green
 import com.sakume.personalfinance.ui.theme.GreenSoft
 import com.sakume.personalfinance.ui.theme.Ink
@@ -92,6 +99,8 @@ fun MoreScreen(
     onAddDebt: (filter: String) -> Unit,
     onPaid: (DebtEntity) -> Unit,
     onUnpaid: (DebtEntity) -> Unit,
+    onEditDebt: (DebtEntity) -> Unit = {},
+    onDeleteDebt: (DebtEntity) -> Unit = {},
     onAddSalary: () -> Unit,
     onEditSalary: (SalaryScheduleEntity) -> Unit,
     onToggleSalary: (SalaryScheduleEntity, Boolean) -> Unit,
@@ -321,6 +330,10 @@ fun MoreScreen(
                 val isPiutang = d.type == "piutang"
                 val typeColor = if (isPiutang) Green else Red
                 val typeBg = if (isPiutang) GreenSoft else RedSoft
+                val context = LocalContext.current
+                var menuOpen by remember(d.id) { mutableStateOf(false) }
+                val dueMillis = d.dueDateMillis
+                val daysLeft = if (dueMillis != null && !d.isPaid) daysUntilDue(dueMillis) else null
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = if (d.isPaid) Color(0xFFF7F7F7) else CardBg,
@@ -354,6 +367,19 @@ fun MoreScreen(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(6.dp))
                                             .background(GreenSoft)
+                                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                                    )
+                                }
+                                if (daysLeft != null && daysLeft < 0) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "Terlambat",
+                                        color = Red,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(RedSoft)
                                             .padding(horizontal = 7.dp, vertical = 2.dp)
                                     )
                                 }
@@ -393,47 +419,104 @@ fun MoreScreen(
                                     trackColor = typeBg
                                 )
                             }
+                            if (dueMillis != null && !d.isPaid) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Jatuh tempo ${formatDate(dueMillis)} · ${dueInLabel(dueMillis)}",
+                                    color = when {
+                                        daysLeft != null && daysLeft < 0 -> Red
+                                        daysLeft != null && daysLeft <= 3 -> Gold
+                                        else -> Muted
+                                    },
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
                         Spacer(Modifier.width(8.dp))
-                        if (!d.isPaid) {
-                            Column(horizontalAlignment = Alignment.End) {
+                        Column(horizontalAlignment = Alignment.End) {
+                            Box {
+                                Box(
+                                    Modifier
+                                        .size(30.dp)
+                                        .clip(CircleShape)
+                                        .clickable { menuOpen = true },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.MoreVert,
+                                        contentDescription = "Menu",
+                                        tint = Muted,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text("Ubah") },
+                                        onClick = {
+                                            menuOpen = false
+                                            onEditDebt(d)
+                                        }
+                                    )
+                                    if (isPiutang && !d.isPaid) {
+                                        DropdownMenuItem(
+                                            text = { Text("Kirim pesan tagih") },
+                                            onClick = {
+                                                menuOpen = false
+                                                shareDebtReminder(context, d)
+                                            }
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = { Text("Hapus") },
+                                        onClick = {
+                                            menuOpen = false
+                                            onDeleteDebt(d)
+                                        }
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            if (!d.isPaid) {
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        if (isPiutang) "Terima" else "Bayar",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(typeColor)
+                                            .clickable { onPaid(d) }
+                                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    )
+                                    if (d.paidAmount > 0L) {
+                                        Spacer(Modifier.height(6.dp))
+                                        Text(
+                                            "Batalkan cicilan",
+                                            color = Muted,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { onUnpaid(d) }
+                                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            } else {
                                 Text(
-                                    if (isPiutang) "Terima" else "Bayar",
-                                    color = Color.White,
+                                    "Batalkan",
+                                    color = Muted,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(typeColor)
-                                        .clickable { onPaid(d) }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                        .background(Color(0xFFEEEEEE))
+                                        .clickable { onUnpaid(d) }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
                                 )
-                                if (d.paidAmount > 0L) {
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        "Batalkan cicilan",
-                                        color = Muted,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable { onUnpaid(d) }
-                                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                                    )
-                                }
                             }
-                        } else {
-                            Text(
-                                "Batalkan",
-                                color = Muted,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFFEEEEEE))
-                                    .clickable { onUnpaid(d) }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                            )
                         }
                     }
                 }

@@ -255,10 +255,11 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                            Text("Pengingat tagihan", fontWeight = FontWeight.SemiBold, color = Ink, fontSize = 14.sp)
+                            Text("Pengingat tagihan & utang", fontWeight = FontWeight.SemiBold, color = Ink, fontSize = 14.sp)
                             Text(
                                 "Satu notifikasi di hari tagihan jatuh tempo. Mengikuti tanggal jatuh tempo yang kamu isi " +
-                                    "di tiap tagihan (PayLater tanggal 1, kartu kredit tanggal 17, dst), jadi berlaku untuk siapa saja.",
+                                    "di tiap tagihan (PayLater tanggal 1, kartu kredit tanggal 17, dst). " +
+                                    "Utang dan piutang yang punya tanggal jatuh tempo ikut diingatkan.",
                                 color = Muted,
                                 fontSize = 12.sp
                             )

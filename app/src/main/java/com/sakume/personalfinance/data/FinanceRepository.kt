@@ -784,13 +784,55 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.deleteSalary(id)
     }
 
-    suspend fun addDebt(type: String, person: String, description: String, amount: Long) {
+    suspend fun addDebt(
+        type: String,
+        person: String,
+        description: String,
+        amount: Long,
+        dueDateMillis: Long? = null
+    ) {
         require(type == "piutang" || type == "utang")
         require(amount > 0)
         dao.putDebt(
             DebtEntity(
                 id(), type, person.trim(), description.trim(), amount,
-                createdAtMillis = System.currentTimeMillis()
+                createdAtMillis = System.currentTimeMillis(),
+                dueDateMillis = dueDateMillis
+            )
+        )
+    }
+
+    suspend fun updateDebt(
+        debtId: String,
+        person: String,
+        description: String,
+        amount: Long,
+        dueDateMillis: Long?
+    ) = db.withTransaction {
+        val debt = dao.allDebts().firstOrNull { it.id == debtId } ?: error("Data tidak ditemukan")
+        val name = person.trim()
+        require(name.isNotEmpty()) { "Nama orang wajib diisi" }
+        require(amount > 0L) { "Nominal harus lebih dari nol" }
+        require(amount >= debt.paidAmount) {
+            "Nominal tidak boleh lebih kecil dari yang sudah ${if (debt.type == "piutang") "diterima" else "dibayar"}"
+        }
+        val settled = debt.paidAmount >= amount
+        val now = System.currentTimeMillis()
+        if (name != debt.person) {
+            val label = if (debt.type == "utang") "Utang" else "Piutang"
+            val linked = dao.allTransactions()
+                .filter { it.debtId == debt.id }
+                .map { it.copy(category = "$label · $name") }
+            if (linked.isNotEmpty()) dao.putTransactions(linked)
+        }
+        dao.putDebt(
+            debt.copy(
+                person = name,
+                description = description.trim(),
+                amount = amount,
+                dueDateMillis = dueDateMillis,
+                isPaid = settled,
+                paidAtMillis = if (settled) (debt.paidAtMillis ?: now) else null
             )
         )
     }

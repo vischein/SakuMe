@@ -376,6 +376,8 @@ fun FinanceApp(
                             },
                             onPaid = { d -> dialog = "paydebt:${d.id}" },
                             onUnpaid = { d -> vm.markDebtUnpaid(d) { error = it } },
+                            onEditDebt = { d -> dialog = "editdebt:${d.id}" },
+                            onDeleteDebt = { d -> dialog = "deletedebt:${d.id}" },
                             onAddSalary = { dialog = "salary" },
                             onEditSalary = { s -> dialog = "editsalary:${s.id}" },
                             onToggleSalary = { s, on -> vm.setSalaryEnabled(s.id, on) },
@@ -850,6 +852,53 @@ fun FinanceApp(
                 }
             }
 
+            dialog.startsWith("editdebt:") -> {
+                val debt = debts.firstOrNull { it.id == dialog.substringAfter(":") }
+                if (debt == null) {
+                    dialog = ""
+                } else {
+                    FormDialog(
+                        title = if (debt.type == "piutang") "Ubah piutang" else "Ubah utang",
+                        fields = listOf("Nama orang", "Deskripsi", "Total (Rp)"),
+                        options = emptyList(),
+                        moneyFields = setOf(2),
+                        includeDueDate = true,
+                        dueDateOptional = true,
+                        dueDateLabel = "Jatuh tempo (opsional)",
+                        initialDueDateMillis = debt.dueDateMillis,
+                        initialValues = listOf(debt.person, debt.description, debt.amount.toString()),
+                        onDismiss = { dialog = "" }
+                    ) { v ->
+                        val amount = v[2].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                        val dueDate = v.getOrNull(3)?.toLongOrNull()
+                        if (v[0].isBlank()) error = "Nama orang wajib diisi"
+                        else if (amount <= 0) error = "Nominal harus lebih dari nol"
+                        else {
+                            vm.updateDebt(debt.id, v[0], v[1], amount, dueDate) { error = it }
+                            dialog = ""
+                        }
+                    }
+                }
+            }
+
+            dialog.startsWith("deletedebt:") -> {
+                val debt = debts.firstOrNull { it.id == dialog.substringAfter(":") }
+                if (debt == null) {
+                    dialog = ""
+                } else {
+                    val kind = if (debt.type == "piutang") "piutang" else "utang"
+                    val extra = if (debt.paidAmount > 0L) " Pembayaran yang sudah tercatat ikut dihapus dan saldo rekening dikembalikan." else ""
+                    ConfirmDialog(
+                        title = "Hapus $kind ${debt.person}?$extra",
+                        confirm = {
+                            vm.deleteDebt(debt.id) { error = it }
+                            dialog = ""
+                        },
+                        cancel = { dialog = "" }
+                    )
+                }
+            }
+
             dialog == "debt" -> FormDialog(
                 title = when (debtFilter) {
                     "Piutang" -> "Tambah piutang"
@@ -863,18 +912,22 @@ fun FinanceApp(
                 optionLabel = "",
                 optionBeforeField = 0,
                 initialOptionIndex = when (debtFilter) { "Utang" -> 1; else -> 0 },
+                includeDueDate = true,
+                dueDateOptional = true,
+                dueDateLabel = "Jatuh tempo (opsional)",
                 onDismiss = { dialog = "" }
             ) { v ->
                 val amount = (v[2].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
                 val type = when (debtFilter) {
                     "Piutang" -> "piutang"
                     "Utang" -> "utang"
-                    else -> v.getOrElse(3) { "piutang" }
+                    else -> v.getOrElse(4) { "piutang" }
                 }
+                val dueDate = v.getOrNull(3)?.toLongOrNull()
                 if (v[0].isBlank()) error = "Nama orang wajib diisi"
                 else if (amount <= 0) error = "Nominal harus lebih dari nol"
                 else {
-                    vm.addDebt(type, v[0], v[1], amount) { error = it }
+                    vm.addDebt(type, v[0], v[1], amount, dueDate) { error = it }
                     dialog = ""
                 }
             }

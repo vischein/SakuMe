@@ -17,7 +17,8 @@ object BillReminder {
         if (cal.get(Calendar.HOUR_OF_DAY) < AppPrefs.billReminderHour(context)) return
 
         val early = AppPrefs.billReminderEarlyDays(context)
-        val bills = AppDatabase.get(context).dao().allBills()
+        val dao = AppDatabase.get(context).dao()
+        val bills = dao.allBills()
         val due = bills.asSequence()
             .filter { !it.isPaid }
             .mapNotNull { b ->
@@ -28,7 +29,19 @@ object BillReminder {
             }
             .toList()
 
+        val debtDue = dao.allDebts().asSequence()
+            .filter { !it.isPaid && it.remaining > 0L }
+            .mapNotNull { d ->
+                val dueMillis = d.dueDateMillis ?: return@mapNotNull null
+                val left = daysUntilDue(dueMillis)
+                if (left == 0 || (early > 0 && left == early)) {
+                    Notify.DebtDue(d.type, d.person, d.description, d.remaining, left)
+                } else null
+            }
+            .toList()
+
         AppPrefs.setBillReminderLastDay(context, today)
         if (due.isNotEmpty()) Notify.billsDue(context, due)
+        if (debtDue.isNotEmpty()) Notify.debtsDue(context, debtDue)
     }
 }

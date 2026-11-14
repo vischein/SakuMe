@@ -19,6 +19,7 @@ object Notify {
     private const val ID_SALARY = 1002
     private const val ID_SCHEDULE_FAILURE = 1004
     private const val ID_BILL = 1005
+    private const val ID_DEBT = 1006
 
     const val EXTRA_OPEN_TAB = "open_tab"
 
@@ -28,6 +29,14 @@ object Notify {
         val installmentIndex: Int,
         val tenorMonths: Int,
         val amount: Long,
+        val daysLeft: Int
+    )
+
+    data class DebtDue(
+        val type: String,
+        val person: String,
+        val description: String,
+        val remaining: Long,
         val daysLeft: Int
     )
 
@@ -41,8 +50,8 @@ object Notify {
                 }
             )
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL_BILLS, "Pengingat tagihan", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "Tagihan yang jatuh tempo hari ini atau segera"
+                NotificationChannel(CHANNEL_BILLS, "Pengingat tagihan & utang", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "Tagihan, utang, dan piutang yang jatuh tempo hari ini atau segera"
                 }
             )
         }
@@ -133,6 +142,45 @@ object Notify {
             "$prefix${it.provider} — ${billDetail(it)}"
         }
         post(context, CHANNEL_BILLS, ID_BILL, title, text, lines, tab = "Bills", important = true)
+    }
+
+    fun debtsDue(context: Context, items: List<DebtDue>) {
+        if (items.isEmpty()) return
+        val sorted = items.sortedWith(compareBy({ it.daysLeft }, { it.person.lowercase() }))
+        val title: String
+        val text: String
+        if (sorted.size == 1) {
+            val d = sorted.first()
+            val whenText = whenLabel(d.daysLeft, capitalized = false)
+            title = if (d.type == "piutang") "Piutang ${d.person} jatuh tempo $whenText" else "Utang ke ${d.person} jatuh tempo $whenText"
+            text = debtDetail(d)
+        } else {
+            val todayCount = sorted.count { it.daysLeft == 0 }
+            title = when {
+                todayCount == sorted.size -> "Hari ini ${sorted.size} utang/piutang jatuh tempo"
+                todayCount > 0 -> "Hari ini $todayCount utang/piutang jatuh tempo, ${sorted.size - todayCount} lagi menyusul"
+                else -> "${sorted.size} utang/piutang segera jatuh tempo"
+            }
+            val parts = mutableListOf<String>()
+            val piutangTotal = sorted.filter { it.type == "piutang" }.sumOf { it.remaining }
+            val utangTotal = sorted.filter { it.type == "utang" }.sumOf { it.remaining }
+            if (piutangTotal > 0L) parts += "Piutang ${rupiah(piutangTotal)}"
+            if (utangTotal > 0L) parts += "Utang ${rupiah(utangTotal)}"
+            text = parts.joinToString(" · ")
+        }
+        val lines = if (sorted.size == 1) emptyList() else sorted.map {
+            val prefix = if (sorted.any { s -> s.daysLeft != 0 }) "${whenLabel(it.daysLeft, capitalized = true)} · " else ""
+            val kind = if (it.type == "piutang") "Piutang" else "Utang"
+            "$prefix$kind ${it.person} — ${debtDetail(it)}"
+        }
+        post(context, CHANNEL_BILLS, ID_DEBT, title, text, lines, tab = "More", important = true)
+    }
+
+    private fun debtDetail(d: DebtDue): String {
+        val parts = mutableListOf<String>()
+        if (d.description.isNotBlank()) parts += d.description
+        parts += rupiah(d.remaining)
+        return parts.joinToString(" · ")
     }
 
     private fun billDetail(b: BillDue): String {

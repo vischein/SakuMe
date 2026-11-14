@@ -144,8 +144,14 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteSalary(id: String) = run({ deleteSalary(id) })
 
-    fun addDebt(type: String, person: String, desc: String, amount: Long, error: (String) -> Unit) =
-        run({ addDebt(type, person, desc, amount) }, error)
+    fun addDebt(type: String, person: String, desc: String, amount: Long, dueDateMillis: Long? = null, error: (String) -> Unit) =
+        run({ addDebt(type, person, desc, amount, dueDateMillis) }, error)
+
+    fun updateDebt(debtId: String, person: String, desc: String, amount: Long, dueDateMillis: Long?, error: (String) -> Unit) =
+        run({ updateDebt(debtId, person, desc, amount, dueDateMillis) }, error)
+
+    fun deleteDebt(debtId: String, error: (String) -> Unit = {}) =
+        run({ deleteDebt(debtId) }, error)
 
     fun payDebt(debtId: String, accountId: String, amount: Long, error: (String) -> Unit = {}) =
         run({ payDebt(debtId, accountId, amount) }, error)
