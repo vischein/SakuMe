@@ -16,11 +16,9 @@ import com.sakume.personalfinance.ui.FinanceViewModel
 import com.sakume.personalfinance.ui.Notify
 import com.sakume.personalfinance.ui.screens.LockScreen
 
-/** FragmentActivity (turunan ComponentActivity) dibutuhkan oleh BiometricPrompt. */
 class MainActivity : FragmentActivity() {
     private val vm: FinanceViewModel by viewModels()
 
-    /** Tab yang diminta dari ketukan notifikasi (mis. "Bills"); dikosongkan setelah dipakai. */
     private var requestedTab by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,7 +26,6 @@ class MainActivity : FragmentActivity() {
         requestedTab = intent?.getStringExtra(Notify.EXTRA_OPEN_TAB)
         AppLock.init(this)
         setContent {
-            // Saat terkunci, FinanceApp tidak ditampilkan sama sekali (termasuk dialog yang sedang terbuka).
             if (AppLock.isLocked) {
                 LockScreen()
             } else {
@@ -37,7 +34,6 @@ class MainActivity : FragmentActivity() {
                     requestedTab = requestedTab,
                     onTabHandled = {
                         requestedTab = null
-                        // Supaya rotasi layar tidak melempar pengguna ke tab itu lagi.
                         intent?.removeExtra(Notify.EXTRA_OPEN_TAB)
                     }
                 )
@@ -56,10 +52,8 @@ class MainActivity : FragmentActivity() {
         AppLock.onForegrounded(this)
     }
 
-    /** Setiap app ditinggalkan, simpan backup terbaru (dilewati otomatis bila data tidak berubah). */
     override fun onStop() {
         super.onStop()
-        // Rotasi layar bukan "meninggalkan app", jadi tidak menghitung jeda kunci.
         if (!isChangingConfigurations) AppLock.onBackgrounded()
         if (AppPrefs.autoBackupEnabled(this)) BackupWorker.enqueueNow(this)
     }

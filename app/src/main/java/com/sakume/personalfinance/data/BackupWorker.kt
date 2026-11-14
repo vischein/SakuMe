@@ -12,12 +12,6 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import java.util.concurrent.TimeUnit
 
-/**
- * Menjalankan backup otomatis di background:
- *  - berkala tiap 12 jam (jaring pengaman kalau app tidak pernah ditutup/dibuka),
- *  - sekali setiap app ditinggalkan (lihat MainActivity.onStop) — di sinilah data terbaru biasanya aman.
- * Kalau tidak ada perubahan data, backup dilewati (lihat BackupManager.runBackup).
- */
 class BackupWorker(
     appContext: Context,
     params: WorkerParameters
@@ -47,7 +41,6 @@ class BackupWorker(
             )
         }
 
-        /** Satu kali, segera. KEEP: kalau sudah ada yang antre/berjalan, tidak ditumpuk. */
         fun enqueueNow(context: Context) {
             val request = OneTimeWorkRequestBuilder<BackupWorker>()
                 .setConstraints(constraints)

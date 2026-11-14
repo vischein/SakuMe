@@ -14,15 +14,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/**
- * Backup otomatis.
- *
- *  - Satu file per hari: sakume_backup_2026-11-13.json (ditimpa dengan data terbaru hari itu).
- *  - Tidak menulis ulang kalau data & pengaturan tidak berubah sejak backup terakhir.
- *  - Disimpan di penyimpanan internal app + (opsional) disalin ke folder pilihan pengguna,
- *    supaya selamat saat app di-uninstall / data dihapus.
- *  - Tidak pernah menimpa backup bagus dengan database kosong.
- */
 object BackupManager {
     private const val DIR = "backups"
     private const val PREFIX_DAILY = "sakume_backup_"
@@ -44,15 +35,11 @@ object BackupManager {
         val kind: Kind,
         val accountCount: Int,
         val transactionCount: Int,
-        /** false bila file tidak bisa dibaca / bukan backup SakuMe yang valid. */
         val valid: Boolean,
-        /** true bila entri ini berasal dari folder pilihan pengguna (bukan penyimpanan internal). */
         val inFolder: Boolean,
         val file: File?,
         val uri: Uri?
     )
-
-    // ------------------------------------------------------------------ pengaturan
 
     fun currentSettings(context: Context) = BackupSettings(
         trailingZeros = AppPrefs.trailingZeros(context),
@@ -65,7 +52,6 @@ object BackupManager {
         autoBackupKeep = AppPrefs.autoBackupKeep(context)
     )
 
-    /** Hanya menimpa pengaturan yang ADA di file backup; sisanya dibiarkan. */
     fun applySettings(context: Context, s: BackupSettings?) {
         if (s == null) return
         s.trailingZeros?.let { AppPrefs.setTrailingZeros(context, it) }
@@ -79,15 +65,9 @@ object BackupManager {
             if (it) BackupWorker.enqueuePeriodic(context) else BackupWorker.cancel(context)
         }
         s.autoBackupKeep?.let { AppPrefs.setAutoBackupKeep(context, it) }
-        // Data baru saja diganti -> backup berikutnya harus benar-benar menulis file.
         AppPrefs.setAutoBackupState(context, "", AppPrefs.autoBackupLastMillis(context))
     }
 
-    // ------------------------------------------------------------------ menjalankan backup
-
-    /**
-     * @param force true = abaikan saklar "otomatis" dan pemeriksaan "tidak ada perubahan" (tombol Backup sekarang).
-     */
     suspend fun runBackup(context: Context, force: Boolean = false, source: String = "auto"): Outcome =
         withContext(Dispatchers.IO) {
             mutex.withLock {
@@ -100,7 +80,6 @@ object BackupManager {
                     if (data.accounts.isEmpty() && data.transactions.isEmpty() && data.bills.isEmpty() &&
                         data.debts.isEmpty() && data.investments.isEmpty()
                     ) {
-                        // Jangan sampai database kosong (mis. habis hapus data) menimpa backup yang bagus.
                         return@withLock Outcome(Status.SKIPPED, "Belum ada data untuk dibackup")
                     }
                     val settings = currentSettings(context)
@@ -120,7 +99,6 @@ object BackupManager {
                             settings = settings
                         )
                     )
-                    // Pastikan file yang akan ditulis benar-benar bisa dibaca balik sebelum menyimpannya.
                     val back = BackupCodec.decode(json)
                     check(back.copy(meta = null, settings = null) == data) { "Verifikasi backup gagal" }
 
@@ -134,7 +112,6 @@ object BackupManager {
                         if (folderError == null) pruneFolder(context, folder)
                     }
 
-                    // Hash baru disimpan hanya bila semua tujuan berhasil, supaya kegagalan folder dicoba lagi.
                     if (folderError == null) AppPrefs.setAutoBackupState(context, hash, now)
                     else AppPrefs.setAutoBackupState(context, "", now)
 
@@ -145,7 +122,6 @@ object BackupManager {
             }
         }
 
-    /** JSON lengkap (semua tabel + pengaturan + info versi) untuk ekspor / bagikan manual. */
     suspend fun buildFullJson(context: Context, source: String = "export"): String = withContext(Dispatchers.IO) {
         val data = FinanceRepository(AppDatabase.get(context)).snapshot()
         BackupCodec.encode(
@@ -156,10 +132,8 @@ object BackupManager {
         )
     }
 
-    /** Dipanggil tepat sebelum impor/restore: simpan kondisi saat ini supaya impor bisa dibatalkan. */
     suspend fun savePreImport(context: Context, currentJson: String): String = withContext(Dispatchers.IO) {
         val name = PREFIX_PRE_IMPORT + SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.US).format(Date()) + ".json"
-        // Bungkus dengan meta supaya muncul rapi di daftar.
         val wrapped = try {
             val data = BackupCodec.decode(currentJson)
             BackupCodec.encode(
@@ -180,8 +154,6 @@ object BackupManager {
         name
     }
 
-    // ------------------------------------------------------------------ daftar & baca
-
     suspend fun list(context: Context): List<BackupEntry> = withContext(Dispatchers.IO) {
         val result = mutableListOf<BackupEntry>()
 
@@ -199,7 +171,6 @@ object BackupManager {
                 tree?.listFiles()?.forEach { doc ->
                     val n = doc.name ?: return@forEach
                     if (!doc.isFile || !n.endsWith(".json") || kindOf(n) == null) return@forEach
-                    // Kalau file yang sama sudah ada di penyimpanan internal, tidak perlu ditampilkan dua kali.
                     if (result.any { it.name == n && it.sizeBytes == doc.length() }) return@forEach
                     result += buildEntry(n, doc.length(), doc.lastModified(), inFolder = true, file = null, uri = doc.uri) {
                         context.contentResolver.openInputStream(doc.uri)?.bufferedReader()?.use { it.readText() }
@@ -207,7 +178,6 @@ object BackupManager {
                     }
                 }
             } catch (_: Exception) {
-                // Folder tidak bisa diakses lagi; daftar internal tetap ditampilkan.
             }
         }
         result.sortedByDescending { it.createdAtMillis }
@@ -225,7 +195,6 @@ object BackupManager {
         Unit
     }
 
-    /** Null = tidak ada folder dipilih. Selain itu: true bila folder masih bisa ditulis. */
     fun folderWritable(context: Context): Boolean? {
         val folder = AppPrefs.autoBackupFolder(context) ?: return null
         return try {
@@ -243,8 +212,6 @@ object BackupManager {
             null
         }
     }
-
-    // ------------------------------------------------------------------ internal
 
     private fun dir(context: Context): File =
         File(context.filesDir, DIR).also { if (!it.exists()) it.mkdirs() }
@@ -326,7 +293,6 @@ object BackupManager {
         }
     }
 
-    /** Urutan baris dari SQLite bisa berubah walau isi sama (INSERT OR REPLACE); urutkan agar hash stabil. */
     private fun stable(d: BackupData) = d.copy(
         accounts = d.accounts.sortedBy { it.id },
         transactions = d.transactions.sortedBy { it.id },

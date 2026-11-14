@@ -62,7 +62,6 @@ import java.util.Locale
 
 @Composable
 fun BackupScreen(
-    /** Naikkan nilainya untuk memuat ulang daftar & status (setelah backup / impor / ganti folder). */
     refreshKey: Int,
     onBack: () -> Unit,
     onExport: () -> Unit,
@@ -102,7 +101,6 @@ fun BackupScreen(
             }
         }
 
-        // ---------------------------------------------------------------- otomatis
         item {
             Card {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -152,7 +150,6 @@ fun BackupScreen(
             }
         }
 
-        // ---------------------------------------------------------------- folder
         item {
             Card {
                 Text("Folder cadangan (disarankan)", fontWeight = FontWeight.Bold, color = Ink, fontSize = 16.sp)
@@ -190,7 +187,6 @@ fun BackupScreen(
             }
         }
 
-        // ---------------------------------------------------------------- daftar
         item {
             Column {
                 Text("Daftar backup", fontWeight = FontWeight.Bold, color = Ink, fontSize = 18.sp)
@@ -209,7 +205,6 @@ fun BackupScreen(
             }
         }
 
-        // ---------------------------------------------------------------- manual
         item {
             Card {
                 Text("Ekspor / impor manual", fontWeight = FontWeight.Bold, color = Ink, fontSize = 16.sp)

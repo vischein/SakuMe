@@ -16,7 +16,6 @@ class ScheduleWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): ListenableWorker.Result {
-        // Pengingat tagihan berdiri sendiri: gagalnya proses jadwal tidak boleh membuatnya tidak jalan.
         runCatching { BillReminder.check(applicationContext) }
         return try {
             val db = AppDatabase.get(applicationContext)

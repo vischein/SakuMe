@@ -35,7 +35,6 @@ data class TransactionEntity(
 
     val debtId: String? = null,
 
-    // Diisi untuk transaksi biaya admin setor/tarik investasi; dipakai saat Hapus / Refund aset.
     val feeAssetId: String? = null
 )
 
@@ -67,7 +66,6 @@ data class InvestmentEntity(
     val archived: Boolean = false
 )
 
-/** Aset (crypto / ETF / saham) yang dibeli memakai saldo platform. [cost] = modal dalam rupiah. */
 @Serializable
 @Entity(
     tableName = "investment_holdings",

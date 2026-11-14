@@ -158,10 +158,6 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun exportJson() = BackupManager.buildFullJson(getApplication())
 
-    /**
-     * Impor / restore. Sebelum data diganti, kondisi saat ini disimpan otomatis ke daftar backup
-     * (tipe "Sebelum impor") sehingga restore bisa dibatalkan. Pengaturan di file ikut dipulihkan.
-     */
     fun importJson(json: String, onDone: (String) -> Unit = {}, error: (String) -> Unit = {}) {
         viewModelScope.launch {
             try {
@@ -176,7 +172,6 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Tombol "Backup sekarang": selalu menulis file, tanpa melihat saklar otomatis. */
     fun backupNow(onDone: (BackupManager.Outcome) -> Unit) {
         viewModelScope.launch { onDone(BackupManager.runBackup(getApplication(), force = true, source = "manual")) }
     }

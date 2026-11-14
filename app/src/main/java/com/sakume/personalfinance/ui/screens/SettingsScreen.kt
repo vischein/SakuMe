@@ -289,7 +289,6 @@ fun SettingsScreen(
                                 Chip(label = "%02d.00".format(h), selected = reminderHour == h) {
                                     reminderHour = h
                                     AppPrefs.setBillReminderHour(context, h)
-                                    // Beri kesempatan kirim ulang hari ini bila jam baru belum terlewati.
                                     AppPrefs.setBillReminderLastDay(context, 0)
                                 }
                             }

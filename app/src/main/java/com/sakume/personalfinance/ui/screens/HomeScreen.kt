@@ -102,7 +102,6 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     var hideBalance by remember { mutableStateOf(AppPrefs.hideHomeBalance(context)) }
-    // Nominal hanya disamarkan untuk tampilan; data & perhitungan tidak berubah.
     fun money(value: Long): String = if (hideBalance) HIDDEN_MONEY else rupiah(value)
 
     val total = accounts.sumOf { it.balance }

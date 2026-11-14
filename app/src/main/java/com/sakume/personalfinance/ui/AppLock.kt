@@ -22,12 +22,6 @@ sealed interface PinResult {
     data class Locked(val remainingMs: Long) : PinResult
 }
 
-/**
- * Kunci aplikasi (PIN + biometrik).
- * - PIN disimpan sebagai hash PBKDF2 + salt acak (bukan teks asli) di SharedPreferences terpisah.
- * - Status terkunci disimpan di memori proses: setelah proses mati, app selalu mulai dalam keadaan terkunci.
- * - Pengaturan kunci TIDAK ikut backup JSON (spesifik perangkat).
- */
 object AppLock {
     private const val PREF = "sakume_security"
     private const val KEY_ENABLED = "lock_enabled"
@@ -39,13 +33,11 @@ object AppLock {
     private const val KEY_LOCK_UNTIL = "pin_lock_until"
     private const val KEY_PIN_LENGTH = "pin_length"
 
-    /** Panjang PIN yang bisa dipilih. PIN lama (sebelum ada pilihan) dianggap 6 digit. */
     val PIN_LENGTH_OPTIONS = listOf(4, 6)
     private const val DEFAULT_PIN_LENGTH = 6
     private const val MAX_TRIES_BEFORE_LOCKOUT = 5
     private const val DEFAULT_TIMEOUT_MS = 60_000L
 
-    /** Jeda sebelum app terkunci lagi setelah ditinggalkan. */
     val TIMEOUT_OPTIONS = listOf(0L, 30_000L, 60_000L, 300_000L)
 
     var isLocked by mutableStateOf(false)
@@ -57,9 +49,6 @@ object AppLock {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREF, Context.MODE_PRIVATE)
 
-    // ---- status ----
-
-    /** Dipanggil dari onCreate; hanya berpengaruh saat proses baru dimulai. */
     fun init(context: Context) {
         if (initialized) return
         initialized = true
@@ -85,8 +74,6 @@ object AppLock {
         backgroundAt = 0L
         isLocked = false
     }
-
-    // ---- PIN ----
 
     fun pinLength(context: Context): Int =
         prefs(context).getInt(KEY_PIN_LENGTH, DEFAULT_PIN_LENGTH).takeIf { it in PIN_LENGTH_OPTIONS } ?: DEFAULT_PIN_LENGTH
@@ -118,7 +105,6 @@ object AppLock {
     fun lockoutRemainingMs(context: Context): Long =
         (prefs(context).getLong(KEY_LOCK_UNTIL, 0L) - System.currentTimeMillis()).coerceAtLeast(0L)
 
-    /** Verifikasi PIN (berat ±100 ms: panggil dari Dispatchers.Default). Memberi jeda bila terlalu sering salah. */
     fun verify(context: Context, pin: String): PinResult {
         val remaining = lockoutRemainingMs(context)
         if (remaining > 0) return PinResult.Locked(remaining)
@@ -133,7 +119,6 @@ object AppLock {
 
         val fails = p.getInt(KEY_FAILS, 0) + 1
         return if (fails % MAX_TRIES_BEFORE_LOCKOUT == 0) {
-            // 30 dtk, 60 dtk, 120 dtk, ... maksimum 15 menit
             val step = (fails / MAX_TRIES_BEFORE_LOCKOUT - 1).coerceAtMost(5)
             val ms = (30_000L shl step).coerceAtMost(900_000L)
             p.edit().putInt(KEY_FAILS, fails).putLong(KEY_LOCK_UNTIL, System.currentTimeMillis() + ms).apply()
@@ -149,16 +134,12 @@ object AppLock {
         return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
     }
 
-    // ---- timeout ----
-
     fun timeoutMs(context: Context): Long =
         prefs(context).getLong(KEY_TIMEOUT, DEFAULT_TIMEOUT_MS).takeIf { it in TIMEOUT_OPTIONS } ?: DEFAULT_TIMEOUT_MS
 
     fun setTimeoutMs(context: Context, ms: Long) {
         prefs(context).edit().putLong(KEY_TIMEOUT, ms).apply()
     }
-
-    // ---- biometrik ----
 
     fun biometricAvailable(context: Context): Boolean =
         BiometricManager.from(context).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) ==
@@ -170,7 +151,6 @@ object AppLock {
         prefs(context).edit().putBoolean(KEY_BIOMETRIC, enabled).apply()
     }
 
-    /** Dialog biometrik sistem. Jika dibatalkan atau gagal, pengguna tetap bisa memakai PIN. */
     fun promptBiometric(activity: FragmentActivity, onSuccess: () -> Unit) {
         val prompt = BiometricPrompt(
             activity,

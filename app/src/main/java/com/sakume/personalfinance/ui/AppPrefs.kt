@@ -23,9 +23,7 @@ object AppPrefs {
     const val DEFAULT_MAX_CATCHUP_DAYS = 30
     const val DEFAULT_BILL_REMINDER_HOUR = 8
     const val DEFAULT_BACKUP_KEEP = 30
-    /** Jam pengingat tagihan yang bisa dipilih. */
     val REMINDER_HOURS = listOf(6, 7, 8, 9, 12, 18, 20)
-    /** Pengingat lebih awal (hari sebelum jatuh tempo). 0 = hanya di hari H. */
     val EARLY_OPTIONS = listOf(0, 1, 3, 7)
     val BACKUP_KEEP_OPTIONS = listOf(7, 14, 30, 60)
     val OPTIONS = listOf(0, 1, 2, 3, 4, 5, 6)
@@ -51,7 +49,6 @@ object AppPrefs {
 
     fun zerosLabel(n: Int): String = if (n <= 0) "Off" else "0".repeat(n)
 
-    /** Sembunyikan nominal di Home saja (total saldo, cash, masuk/keluar, kartu rekening). */
     fun hideHomeBalance(context: Context): Boolean =
         prefs(context).getBoolean(KEY_HIDE_HOME_BALANCE, false)
 
@@ -66,7 +63,6 @@ object AppPrefs {
         prefs(context).edit().putBoolean(KEY_NOTIFICATIONS, enabled).apply()
     }
 
-    /** Fitur PIN sudah dihapus; bersihkan sisa data lama supaya tidak ada hash PIN tertinggal. */
     fun removeLegacyPin(context: Context) {
         prefs(context).edit().remove("app_pin_hash").remove("app_lock_enabled").apply()
     }
@@ -78,7 +74,6 @@ object AppPrefs {
         prefs(context).edit().putInt(KEY_MAX_CATCHUP_DAYS, days.coerceIn(7, 365)).apply()
     }
 
-    // ---- Pengingat tagihan ----
     fun billReminderEnabled(context: Context): Boolean =
         prefs(context).getBoolean(KEY_BILL_REMINDER, true)
 
@@ -100,7 +95,6 @@ object AppPrefs {
         prefs(context).edit().putInt(KEY_BILL_REMINDER_EARLY, days.coerceIn(0, 30)).apply()
     }
 
-    /** Tanggal (yyyyMMdd) terakhir pengingat dikirim, supaya tidak dobel dalam satu hari. */
     fun billReminderLastDay(context: Context): Int =
         prefs(context).getInt(KEY_BILL_REMINDER_LAST_DAY, 0)
 
@@ -108,7 +102,6 @@ object AppPrefs {
         prefs(context).edit().putInt(KEY_BILL_REMINDER_LAST_DAY, day).apply()
     }
 
-    // ---- Backup otomatis ----
     fun autoBackupEnabled(context: Context): Boolean =
         prefs(context).getBoolean(KEY_AUTO_BACKUP, true)
 
@@ -123,14 +116,12 @@ object AppPrefs {
         prefs(context).edit().putInt(KEY_AUTO_BACKUP_KEEP, keep.coerceIn(3, 365)).apply()
     }
 
-    /** URI folder (Storage Access Framework) tempat salinan backup juga ditulis; null = belum dipilih. */
     fun autoBackupFolder(context: Context): String? =
         prefs(context).getString(KEY_AUTO_BACKUP_FOLDER, null)?.takeIf { it.isNotBlank() }
 
     fun setAutoBackupFolder(context: Context, uri: String?) {
         prefs(context).edit().apply {
             if (uri.isNullOrBlank()) remove(KEY_AUTO_BACKUP_FOLDER) else putString(KEY_AUTO_BACKUP_FOLDER, uri)
-            // Folder baru -> paksa tulis ulang walau data belum berubah.
             remove(KEY_AUTO_BACKUP_HASH)
         }.apply()
     }

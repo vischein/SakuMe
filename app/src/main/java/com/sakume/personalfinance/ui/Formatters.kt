@@ -10,7 +10,6 @@ import java.util.Locale
 
 fun rupiah(value: Long): String = NumberFormat.getCurrencyInstance(Locale("id", "ID")).apply { maximumFractionDigits = 0 }.format(value)
 
-/** Tampilkan kategori tanpa bullet / spasi berlebih (data lama "Tagihan • Kredivo"). */
 fun displayCategory(raw: String): String =
     raw
         .replace(" • ", " ")

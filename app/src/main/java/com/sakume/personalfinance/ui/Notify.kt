@@ -22,7 +22,6 @@ object Notify {
 
     const val EXTRA_OPEN_TAB = "open_tab"
 
-    /** Satu tagihan yang akan/sudah jatuh tempo. [daysLeft] 0 = hari H. */
     data class BillDue(
         val provider: String,
         val itemName: String,
@@ -49,9 +48,6 @@ object Notify {
         }
     }
 
-    // ------------------------------------------------------------------ hasil jadwal
-
-    /** Dipakai bersama oleh worker background dan saat app dibuka; menghormati saklar notifikasi. */
     fun scheduleResult(context: Context, result: FinanceRepository.ScheduleRunResult) {
         if (!AppPrefs.notificationsEnabled(context)) return
         if (result.salaryRuns.isNotEmpty()) salary(context, result.salaryRuns)
@@ -59,12 +55,6 @@ object Notify {
         if (result.failures.isNotEmpty()) scheduleFailure(context, result.failures)
     }
 
-    /**
-     * Satu gaji:
-     *   Gaji masuk Rp5.000.000
-     *   Gaji bulanan ke BCA · saldo sekarang Rp8.250.000
-     * Beberapa gaji: judul ringkas + satu baris per gaji.
-     */
     private fun salary(context: Context, runs: List<FinanceRepository.SalaryRun>) {
         if (runs.size == 1) {
             val r = runs.first()
@@ -118,14 +108,6 @@ object Notify {
         )
     }
 
-    // ------------------------------------------------------------------ tagihan
-
-    /**
-     * Hari H, satu tagihan:
-     *   Hari ini jatuh tempo: Kredivo
-     *   Laptop · cicilan 2/6 · Rp450.000
-     * Beberapa tagihan: ringkasan jumlah + total, lalu satu baris per tagihan.
-     */
     fun billsDue(context: Context, items: List<BillDue>) {
         if (items.isEmpty()) return
         val sorted = items.sortedWith(compareBy({ it.daysLeft }, { it.provider.lowercase() }))
@@ -174,8 +156,6 @@ object Notify {
         else -> ""
     }
 
-    // ------------------------------------------------------------------ dasar
-
     private fun post(
         context: Context,
         channel: String,
@@ -214,7 +194,6 @@ object Notify {
         try {
             NotificationManagerCompat.from(context).notify(id, notification)
         } catch (_: SecurityException) {
-            // Izin notifikasi belum diberikan.
         }
     }
 }

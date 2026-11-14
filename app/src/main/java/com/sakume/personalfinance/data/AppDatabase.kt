@@ -377,7 +377,6 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        /** Fitur anggaran dihapus; migrasi ini membersihkan tabel `budgets` bila sempat dibuat. */
         private val MIGRATION_12_13 = object : Migration(12, 13) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DROP TABLE IF EXISTS budgets")

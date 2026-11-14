@@ -56,7 +56,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Layar kunci penuh: PIN 6 digit + tombol biometrik (bila diaktifkan dan tersedia). */
 @Composable
 fun LockScreen() {
     val context = LocalContext.current
@@ -156,7 +155,6 @@ fun LockScreen() {
     }
 }
 
-/** Dialog layar penuh untuk memasukkan PIN (atur PIN baru, ulangi PIN, verifikasi PIN lama). */
 @Composable
 fun PinEntryDialog(
     title: String,

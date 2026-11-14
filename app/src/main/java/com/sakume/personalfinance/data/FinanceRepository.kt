@@ -168,8 +168,6 @@ class FinanceRepository(private val db: AppDatabase) {
                     "expense", "transfer_out" -> account.balance + item.amount
                     else -> account.balance
                 }
-                // Menghapus pemasukan / transfer masuk MENGURANGI saldo. Kalau uangnya sudah
-                // terpakai, saldo akan minus -> tolak dengan pesan yang jelas.
                 require(newBalance >= 0L) {
                     "${if (item.type == "transfer_in") "Transfer masuk" else "Pemasukan"} ${rupiahText(item.amount)} " +
                         "tidak bisa dihapus: saldo ${account.name} " +
