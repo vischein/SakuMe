@@ -14,24 +14,29 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -44,7 +49,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.data.ScheduleWorker
+import com.sakume.personalfinance.ui.AppLock
 import com.sakume.personalfinance.ui.AppPrefs
+import com.sakume.personalfinance.ui.PinResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.sakume.personalfinance.ui.theme.CardBg
 import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Muted
@@ -65,6 +75,93 @@ fun SettingsScreen(
     var billReminder by remember { mutableStateOf(AppPrefs.billReminderEnabled(context)) }
     var reminderHour by remember { mutableStateOf(AppPrefs.billReminderHour(context)) }
     var earlyDays by remember { mutableStateOf(AppPrefs.billReminderEarlyDays(context)) }
+
+    val scope = rememberCoroutineScope()
+    var lockEnabled by remember { mutableStateOf(AppLock.isEnabled(context)) }
+    var biometricOn by remember { mutableStateOf(AppLock.biometricEnabled(context)) }
+    var lockTimeout by remember { mutableStateOf(AppLock.timeoutMs(context)) }
+    val biometricAvailable = remember { AppLock.biometricAvailable(context) }
+    var pinFlow by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf<String?>(null) }
+    var firstPin by remember { mutableStateOf("") }
+    var newPinLength by remember { mutableStateOf(AppLock.pinLength(context)) }
+
+    when (pinFlow) {
+        "choose_length" -> AlertDialog(
+            onDismissRequest = { pinFlow = ""; pinError = null },
+            title = { Text("Panjang PIN") },
+            text = { Text("Pilih jumlah digit PIN yang ingin kamu pakai.") },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    AppLock.PIN_LENGTH_OPTIONS.forEach { n ->
+                        TextButton(onClick = { newPinLength = n; pinError = null; pinFlow = "setup1" }) {
+                            Text("$n digit")
+                        }
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pinFlow = ""; pinError = null }) { Text("Batal") }
+            }
+        )
+        "setup1" -> PinEntryDialog(
+            title = "Buat PIN",
+            subtitle = "Masukkan $newPinLength digit PIN",
+            error = pinError,
+            length = newPinLength,
+            onDismiss = { pinFlow = ""; pinError = null }
+        ) { p ->
+            firstPin = p
+            pinError = null
+            pinFlow = "setup2"
+        }
+        "setup2" -> PinEntryDialog(
+            title = "Ulangi PIN",
+            subtitle = "Masukkan PIN yang sama sekali lagi",
+            error = pinError,
+            length = newPinLength,
+            onDismiss = { pinFlow = ""; pinError = null; firstPin = "" }
+        ) { p ->
+            if (p == firstPin) {
+                scope.launch {
+                    withContext(Dispatchers.Default) { AppLock.setPin(context, p) }
+                    lockEnabled = true
+                    pinFlow = ""
+                    pinError = null
+                    firstPin = ""
+                }
+            } else {
+                firstPin = ""
+                pinError = "PIN tidak sama. Ulangi dari awal."
+                pinFlow = "setup1"
+            }
+        }
+        "verify_disable", "verify_change" -> PinEntryDialog(
+            title = "Masukkan PIN saat ini",
+            subtitle = if (pinFlow == "verify_disable") "Untuk menonaktifkan kunci aplikasi" else "Untuk mengubah PIN",
+            error = pinError,
+            length = AppLock.pinLength(context),
+            onDismiss = { pinFlow = ""; pinError = null }
+        ) { p ->
+            scope.launch {
+                when (val r = withContext(Dispatchers.Default) { AppLock.verify(context, p) }) {
+                    PinResult.Success -> {
+                        pinError = null
+                        if (pinFlow == "verify_disable") {
+                            AppLock.disable(context)
+                            lockEnabled = false
+                            biometricOn = false
+                            pinFlow = ""
+                        } else {
+                            pinFlow = "choose_length"
+                        }
+                    }
+                    is PinResult.Wrong -> pinError = "PIN salah. Sisa ${r.attemptsLeft} percobaan."
+                    is PinResult.Locked -> pinError = "Terlalu banyak percobaan. Coba lagi dalam ${(r.remainingMs + 999) / 1000} detik."
+                }
+            }
+        }
+    }
 
     Column(
         Modifier
@@ -246,6 +343,104 @@ fun SettingsScreen(
             }
 
             item {
+                SettingsSection(icon = Icons.Filled.Lock, title = "Keamanan") {
+                    val switchColors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Ink,
+                        uncheckedThumbColor = Color.White,
+                        uncheckedTrackColor = Muted
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text("Kunci aplikasi (PIN)", fontWeight = FontWeight.SemiBold, color = Ink, fontSize = 14.sp)
+                            Text(
+                                "Minta PIN 4 atau 6 digit saat membuka SakuMe.",
+                                color = Muted,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Switch(
+                            checked = lockEnabled,
+                            onCheckedChange = { on ->
+                                pinError = null
+                                pinFlow = if (on) "choose_length" else "verify_disable"
+                            },
+                            colors = switchColors
+                        )
+                    }
+
+                    if (lockEnabled) {
+                        Spacer(Modifier.height(14.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                                Text("Biometrik", fontWeight = FontWeight.SemiBold, color = Ink, fontSize = 14.sp)
+                                Text(
+                                    if (biometricAvailable) "Buka dengan sidik jari atau wajah. PIN tetap jadi cadangan."
+                                    else "Belum ada sidik jari/wajah yang terdaftar di perangkat ini.",
+                                    color = Muted,
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Switch(
+                                checked = biometricOn && biometricAvailable,
+                                enabled = biometricAvailable,
+                                onCheckedChange = { on ->
+                                    biometricOn = on
+                                    AppLock.setBiometricEnabled(context, on)
+                                },
+                                colors = switchColors
+                            )
+                        }
+
+                        Spacer(Modifier.height(14.dp))
+                        Text("Kunci otomatis setelah ditinggalkan", fontWeight = FontWeight.SemiBold, color = Ink, fontSize = 14.sp)
+                        Spacer(Modifier.height(8.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(AppLock.TIMEOUT_OPTIONS) { ms ->
+                                Chip(
+                                    label = when (ms) {
+                                        0L -> "Langsung"
+                                        30_000L -> "30 detik"
+                                        60_000L -> "1 menit"
+                                        else -> "${ms / 60_000} menit"
+                                    },
+                                    selected = lockTimeout == ms
+                                ) {
+                                    lockTimeout = ms
+                                    AppLock.setTimeoutMs(context, ms)
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(14.dp))
+                        Button(
+                            onClick = { pinError = null; pinFlow = "verify_change" },
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Ink)
+                        ) {
+                            Text("Ubah PIN")
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "PIN tidak bisa dipulihkan. Jika lupa, satu-satunya cara adalah menghapus data aplikasi lalu restore dari backup.",
+                        color = Muted,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            item {
                 SettingsSection(icon = Icons.Filled.Backup, title = "Backup & restore") {
                     Text(
                         "Backup otomatis, daftar backup per tanggal, dan restore. File JSON belum terenkripsi — jangan bagikan ke sembarang orang.",
@@ -268,7 +463,7 @@ fun SettingsScreen(
                 SettingsSection(icon = Icons.Filled.Tune, title = "Tentang data") {
                     Text(
                         "Skala uang: 1 unit = Rp1 (rupiah utuh, bukan sen).\n" +
-                            "Versi app: 1.2, Room schema v12",
+                            "Versi app: 1.2, Room schema v13",
                         color = Muted,
                         fontSize = 12.sp,
                         lineHeight = 18.sp

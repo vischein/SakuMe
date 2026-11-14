@@ -87,7 +87,7 @@ import com.sakume.personalfinance.ui.theme.Red
 import com.sakume.personalfinance.ui.theme.RedSoft
 
 
-private const val HIDDEN_MONEY = "Rp ••••••"
+private const val HIDDEN_MONEY = "•••••"
 
 @Composable
 fun HomeScreen(
@@ -159,7 +159,7 @@ fun HomeScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Total saldo", color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp)
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(6.dp))
                     Box(
                         Modifier
                             .size(28.dp)
