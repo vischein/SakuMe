@@ -1,8 +1,11 @@
 package com.sakume.personalfinance
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.runtime.getValue
@@ -15,6 +18,7 @@ import com.sakume.personalfinance.ui.FinanceApp
 import com.sakume.personalfinance.ui.FinanceViewModel
 import com.sakume.personalfinance.ui.Notify
 import com.sakume.personalfinance.ui.screens.LockScreen
+import com.sakume.personalfinance.ui.theme.NormalizedDensity
 
 class MainActivity : FragmentActivity() {
     private val vm: FinanceViewModel by viewModels()
@@ -23,20 +27,27 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+            // darkScrim dipakai hanya di Android 8.0 yang belum punya ikon navigasi gelap
+            navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.argb(0x80, 0x1B, 0x1B, 0x1B))
+        )
         requestedTab = intent?.getStringExtra(Notify.EXTRA_OPEN_TAB)
         AppLock.init(this)
         setContent {
-            if (AppLock.isLocked) {
-                LockScreen()
-            } else {
-                FinanceApp(
-                    vm,
-                    requestedTab = requestedTab,
-                    onTabHandled = {
-                        requestedTab = null
-                        intent?.removeExtra(Notify.EXTRA_OPEN_TAB)
-                    }
-                )
+            NormalizedDensity {
+                if (AppLock.isLocked) {
+                    LockScreen()
+                } else {
+                    FinanceApp(
+                        vm,
+                        requestedTab = requestedTab,
+                        onTabHandled = {
+                            requestedTab = null
+                            intent?.removeExtra(Notify.EXTRA_OPEN_TAB)
+                        }
+                    )
+                }
             }
         }
     }

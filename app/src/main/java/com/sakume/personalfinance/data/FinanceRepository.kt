@@ -378,6 +378,37 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.putInvestment(InvestmentEntity(id(), cleanName, target))
     }
 
+    suspend fun addGoal(name: String, target: Long, deadlineMillis: Long?, category: String) = db.withTransaction {
+        val cleanName = name.trim()
+        require(cleanName.isNotBlank()) { "Nama goal wajib diisi" }
+        require(target > 0L) { "Target harus lebih dari nol" }
+        dao.putInvestment(
+            InvestmentEntity(
+                id = id(),
+                name = cleanName,
+                target = target,
+                kind = KIND_GOAL,
+                deadlineMillis = deadlineMillis,
+                category = if (category in GOAL_CATEGORIES) category else "Lainnya"
+            )
+        )
+    }
+
+    suspend fun updateGoal(id: String, name: String, target: Long, deadlineMillis: Long?, category: String) = db.withTransaction {
+        val goal = dao.allInvestments().firstOrNull { it.id == id && it.kind == KIND_GOAL }
+            ?: error("Goal tidak ditemukan")
+        require(name.isNotBlank()) { "Nama goal wajib diisi" }
+        require(target > 0L) { "Target harus lebih dari nol" }
+        dao.putInvestment(
+            goal.copy(
+                name = name.trim(),
+                target = target,
+                deadlineMillis = deadlineMillis,
+                category = if (category in GOAL_CATEGORIES) category else "Lainnya"
+            )
+        )
+    }
+
     suspend fun updateInvestment(id: String, name: String, target: Long?) {
         val asset = dao.allInvestments().firstOrNull { it.id == id }
             ?: error("Aset tidak ditemukan")

@@ -256,6 +256,7 @@ fun FormDialog(
     options: List<String>,
     optionLabel: String = "Pilihan",
     optionDisplay: (String) -> String = { it },
+    optionsAsChips: Boolean = false,
     optionBeforeField: Int = -1,
     extraOptions: List<String> = emptyList(),
     extraOptionLabel: String = "Pilihan tambahan",
@@ -317,7 +318,7 @@ fun FormDialog(
                 Text(optionLabel, color = Muted, fontSize = 12.sp)
             }
             val isTenor = optionLabel.contains("Tenor", ignoreCase = true)
-            val useChips = isTenor || (
+            val useChips = optionsAsChips || isTenor || (
                 options.size <= 3 &&
                     !optionLabel.contains("rekening", ignoreCase = true) &&
                     !optionLabel.contains("Dari", ignoreCase = true) &&
@@ -749,6 +750,7 @@ fun InvestmentTransferDialog(
     infoText: String? = null,
     amountLabel: String = "Nominal",
     feeLabel: String = "Biaya Admin",
+    showFee: Boolean = true,
     onDismiss: () -> Unit,
     onConfirm: (account: AccountEntity, amount: Long, adminFee: Long) -> Unit
 ) {
@@ -772,13 +774,15 @@ fun InvestmentTransferDialog(
                 isMoney = true,
                 autoThousand = true
             )
-            SheetField(
-                value = feeDigits,
-                onValueChange = { feeDigits = it },
-                label = feeLabel,
-                isMoney = true,
-                autoThousand = false
-            )
+            if (showFee) {
+                SheetField(
+                    value = feeDigits,
+                    onValueChange = { feeDigits = it },
+                    label = feeLabel,
+                    isMoney = true,
+                    autoThousand = false
+                )
+            }
             Text(accountLabel, color = Muted, fontSize = 12.sp)
             AccountCardList(accounts, selected) { selected = it }
         }
@@ -792,7 +796,7 @@ fun InvestmentTransferDialog(
                     if (account != null) {
                         val amount = (amountDigits.toLongOrNull() ?: 0L) *
                             AppPrefs.multiplier(AppPrefs.trailingZeros(context))
-                        val fee = feeDigits.toLongOrNull() ?: 0L
+                        val fee = if (showFee) feeDigits.toLongOrNull() ?: 0L else 0L
                         onConfirm(account, amount, fee)
                     }
                 },

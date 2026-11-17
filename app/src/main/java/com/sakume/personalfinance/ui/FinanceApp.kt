@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.sakume.personalfinance.data.BackupCodec
 import com.sakume.personalfinance.data.BackupManager
+import com.sakume.personalfinance.data.GOAL_CATEGORIES
 import com.sakume.personalfinance.data.HOLDING_TYPES
 import com.sakume.personalfinance.ui.components.AccountPickerDialog
 import com.sakume.personalfinance.ui.components.InvestmentTransferDialog
@@ -85,6 +86,7 @@ fun FinanceApp(
     var historyAccountId by remember { mutableStateOf<String?>(null) }
     var billsProviderFilter by remember { mutableStateOf("Semua") }
     var debtFilter by remember { mutableStateOf("Semua") }
+    var investSegment by remember { mutableStateOf<Int?>(null) }
     var dialog by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var importResult by remember { mutableStateOf("") }
@@ -201,6 +203,7 @@ fun FinanceApp(
                     subScreen = null
                     if (label == "Bills") billsProviderFilter = "Semua"
                     if (label == "More") debtFilter = "Semua"
+                    if (label == "Invest") investSegment = null
                 })
             },
             content = { padding ->
@@ -211,12 +214,14 @@ fun FinanceApp(
                 ) {
                     if (subScreen == "settings") {
                         SettingsScreen(
+                            salaries = salaries,
+                            accounts = accounts,
                             onBack = { subScreen = null },
                             onOpenBackup = { subScreen = "backup" },
-                            onAddSalary = {
-                                subScreen = null
-                                dialog = "salary"
-                            }
+                            onAddSalary = { dialog = "salary" },
+                            onEditSalary = { s -> dialog = "editsalary:${s.id}" },
+                            onToggleSalary = { s, on -> vm.setSalaryEnabled(s.id, on) },
+                            onDeleteSalary = { s -> dialog = "deletesalary:${s.id}" }
                         )
                     } else if (subScreen == "txHistory") {
                         TransactionHistoryScreen(
@@ -317,7 +322,14 @@ fun FinanceApp(
                                         billsProviderFilter = action.removePrefix("bills:")
                                         tab = "Bills"
                                     }
-                                    action == "invest" -> tab = "Invest"
+                                    action == "invest" -> {
+                                        investSegment = 1
+                                        tab = "Invest"
+                                    }
+                                    action == "invest:goals" -> {
+                                        investSegment = 0
+                                        tab = "Invest"
+                                    }
                                     action == "more:piutang" -> {
                                         debtFilter = "Piutang"
                                         tab = "More"
@@ -329,7 +341,6 @@ fun FinanceApp(
                                     else -> dialog = action
                                 }
                             },
-                            onOpenSettings = { subScreen = "settings" },
                             onSeeAllTx = { subScreen = "txHistory" }
                         )
                         "Analisis" -> AnalyticsScreen(
@@ -354,7 +365,10 @@ fun FinanceApp(
                             accounts = accounts,
                             schedules = schedules,
                             holdings = holdings,
+                            initialSegment = investSegment,
                             onAdd = { dialog = "investment" },
+                            onAddGoal = { dialog = "goal" },
+                            onEditGoal = { a -> dialog = "editgoal:${a.id}" },
                             onAddHolding = { a -> dialog = "addholding:${a.id}" },
                             onDeleteHolding = { h -> dialog = "delholding:${h.id}" },
                             onContribute = { a -> dialog = "contribute:${a.id}" },
@@ -368,7 +382,6 @@ fun FinanceApp(
                         else -> MoreScreen(
                             debts = debts,
                             accounts = accounts,
-                            salaries = salaries,
                             initialDebtFilter = debtFilter,
                             onAddDebt = { filter ->
                                 debtFilter = filter
@@ -378,11 +391,13 @@ fun FinanceApp(
                             onUnpaid = { d -> vm.markDebtUnpaid(d) { error = it } },
                             onEditDebt = { d -> dialog = "editdebt:${d.id}" },
                             onDeleteDebt = { d -> dialog = "deletedebt:${d.id}" },
-                            onAddSalary = { dialog = "salary" },
-                            onEditSalary = { s -> dialog = "editsalary:${s.id}" },
-                            onToggleSalary = { s, on -> vm.setSalaryEnabled(s.id, on) },
-                            onDeleteSalary = { s -> dialog = "deletesalary:${s.id}" },
                             onOpenSettings = { subScreen = "settings" },
+                            onOpenAccounts = { subScreen = "manageAccounts" },
+                            onOpenHistory = {
+                                historyAccountId = null
+                                subScreen = "txHistory"
+                            },
+                            onOpenBackup = { subScreen = "backup" },
                             onDebtFilterChange = { debtFilter = it }
                         )
                     }
@@ -565,6 +580,66 @@ fun FinanceApp(
                 }
             }
 
+            dialog == "goal" -> FormDialog(
+                title = "Goal tabungan baru",
+                fields = listOf("Nama goal (mis. Liburan Bali)", "Target"),
+                options = GOAL_CATEGORIES,
+                optionLabel = "Kategori",
+                optionsAsChips = true,
+                includeDueDate = true,
+                dueDateOptional = true,
+                dueDateLabel = "Tenggat (opsional)",
+                requiredFields = setOf(0),
+                onDismiss = { dialog = "" }
+            ) { v ->
+                val target = v[1].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                val due = v.getOrNull(2)?.toLongOrNull()
+                val category = v.getOrElse(3) { "Lainnya" }
+                when {
+                    v[0].isBlank() -> error = "Nama goal wajib diisi"
+                    target <= 0 -> error = "Target harus lebih dari nol"
+                    else -> {
+                        vm.addGoal(v[0], target, due, category) { error = it }
+                        dialog = ""
+                    }
+                }
+            }
+
+            dialog.startsWith("editgoal:") -> {
+                val goal = investments.firstOrNull { it.id == dialog.substringAfter(":") && it.isGoal }
+                if (goal == null) {
+                    dialog = ""
+                } else {
+                    FormDialog(
+                        title = "Ubah goal",
+                        fields = listOf("Nama goal", "Target"),
+                        options = GOAL_CATEGORIES,
+                        optionLabel = "Kategori",
+                        optionsAsChips = true,
+                        initialOptionIndex = GOAL_CATEGORIES.indexOf(goal.category).coerceAtLeast(0),
+                        includeDueDate = true,
+                        dueDateOptional = true,
+                        dueDateLabel = "Tenggat (opsional)",
+                        initialDueDateMillis = goal.deadlineMillis,
+                        initialValues = listOf(goal.name, goal.target?.toString().orEmpty()),
+                        requiredFields = setOf(0),
+                        onDismiss = { dialog = "" }
+                    ) { v ->
+                        val target = v[1].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                        val due = v.getOrNull(2)?.toLongOrNull()
+                        val category = v.getOrElse(3) { goal.category }
+                        when {
+                            v[0].isBlank() -> error = "Nama goal wajib diisi"
+                            target <= 0 -> error = "Target harus lebih dari nol"
+                            else -> {
+                                vm.updateGoal(goal.id, v[0], target, due, category) { error = it }
+                                dialog = ""
+                            }
+                        }
+                    }
+                }
+            }
+
             dialog.startsWith("editinvest:") -> {
                 val asset = investments.firstOrNull { it.id == dialog.substringAfter(":") }
                 if (asset == null) {
@@ -596,7 +671,7 @@ fun FinanceApp(
             dialog.startsWith("schedule:") -> {
                 val asset = investments.firstOrNull { it.id == dialog.substringAfter(":") }
                 WeeklyScheduleDialog(
-                    title = "Jadwal setor mingguan",
+                    title = if (asset?.isGoal == true) "Jadwal nabung mingguan" else "Jadwal setor mingguan",
                     accounts = accounts,
                     onDismiss = { dialog = "" }
                 ) { acc, amount, day ->
@@ -616,11 +691,14 @@ fun FinanceApp(
                 val available = asset?.let { a ->
                     a.value - holdings.filter { it.platformId == a.id }.sumOf { it.cost }
                 } ?: 0L
+                val isGoal = asset?.isGoal == true
                 InvestmentTransferDialog(
-                    title = "Tarik investasi",
+                    title = if (isGoal) "Ambil dari ${asset?.name.orEmpty()}" else "Tarik investasi",
                     accountLabel = "Ke rekening",
                     accounts = accounts,
-                    infoText = "Saldo tersedia di platform: ${rupiah(available)}",
+                    infoText = if (isGoal) "Saldo tabungan: ${rupiah(available)}"
+                    else "Saldo tersedia di platform: ${rupiah(available)}",
+                    showFee = !isGoal,
                     onDismiss = { dialog = "" }
                 ) { acc, amount, adminFee ->
                     when {
@@ -638,10 +716,12 @@ fun FinanceApp(
 
             dialog.startsWith("contribute:") -> {
                 val asset = investments.firstOrNull { it.id == dialog.substringAfter(":") }
+                val isGoal = asset?.isGoal == true
                 InvestmentTransferDialog(
-                    title = "Setor investasi",
+                    title = if (isGoal) "Nabung ke ${asset?.name.orEmpty()}" else "Setor investasi",
                     accountLabel = "Dari rekening",
                     accounts = accounts,
+                    showFee = !isGoal,
                     onDismiss = { dialog = "" }
                 ) { acc, amount, adminFee ->
                     when {
@@ -695,7 +775,9 @@ fun FinanceApp(
             }
 
             dialog.startsWith("deleteinvest:") -> ConfirmDialog(
-                title = "Hapus aset dan refund semua kontribusi beserta biaya admin ke rekening yang dipilih?",
+                title = if (investments.firstOrNull { it.id == dialog.substringAfter(":") }?.isGoal == true)
+                    "Hapus goal ini dan kembalikan semua tabungan ke rekening asal?"
+                else "Hapus aset dan refund semua kontribusi beserta biaya admin ke rekening yang dipilih?",
                 confirm = {
                     vm.deleteInvestment(dialog.substringAfter(":"))
                     dialog = ""

@@ -95,6 +95,12 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addInvestment(name: String, target: Long?) = run({ addInvestment(name, target) })
 
+    fun addGoal(name: String, target: Long, deadlineMillis: Long?, category: String, error: (String) -> Unit = {}) =
+        run({ addGoal(name, target, deadlineMillis, category) }, error)
+
+    fun updateGoal(id: String, name: String, target: Long, deadlineMillis: Long?, category: String, error: (String) -> Unit = {}) =
+        run({ updateGoal(id, name, target, deadlineMillis, category) }, error)
+
     fun updateInvestment(id: String, name: String, target: Long?, error: (String) -> Unit = {}) =
         run({ updateInvestment(id, name, target) }, error)
 

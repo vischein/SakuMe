@@ -1,5 +1,9 @@
 package com.sakume.personalfinance.ui.screens
 
+import android.graphics.drawable.ColorDrawable
+import android.os.Build
+import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +41,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -167,8 +176,12 @@ fun PinEntryDialog(
     var pin by remember(title) { mutableStateOf("") }
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
+        EdgeToEdgeDialogWindow(background = Paper)
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
             Column(
                 Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
@@ -208,6 +221,36 @@ fun PinEntryDialog(
                 )
                 Spacer(Modifier.weight(1f))
             }
+        }
+    }
+}
+
+/**
+ * Dialog adalah window terpisah dari Activity, jadi tidak ikut edge-to-edge:
+ * status bar / navigation bar-nya tampil gelap (dim) dengan ikon terang.
+ * Fungsi ini membuat window dialog menggambar sampai belakang kedua bar,
+ * menghilangkan dim, dan memakai ikon gelap seperti layar lain.
+ */
+@Suppress("DEPRECATION")
+@Composable
+internal fun EdgeToEdgeDialogWindow(background: Color) {
+    val view = LocalView.current
+    SideEffect {
+        val window = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+        window.setBackgroundDrawable(ColorDrawable(background.toArgb()))
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= 29) {
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
+        }
+        WindowCompat.getInsetsController(window, view).apply {
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = true
         }
     }
 }

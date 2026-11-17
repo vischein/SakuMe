@@ -59,14 +59,28 @@ import com.sakume.personalfinance.ui.theme.CardBg
 import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Muted
 import com.sakume.personalfinance.ui.theme.Paper
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.ui.text.style.TextAlign
+import com.sakume.personalfinance.data.AccountEntity
+import com.sakume.personalfinance.data.SalaryScheduleEntity
+import com.sakume.personalfinance.ui.formatDate
+import com.sakume.personalfinance.ui.rupiah
+import com.sakume.personalfinance.ui.theme.Red
+import com.sakume.personalfinance.ui.theme.RedSoft
 import java.text.NumberFormat
 import java.util.Locale
 
 @Composable
 fun SettingsScreen(
+    salaries: List<SalaryScheduleEntity> = emptyList(),
+    accounts: List<AccountEntity> = emptyList(),
     onBack: () -> Unit,
     onOpenBackup: () -> Unit,
-    onAddSalary: () -> Unit
+    onAddSalary: () -> Unit,
+    onEditSalary: (SalaryScheduleEntity) -> Unit = {},
+    onToggleSalary: (SalaryScheduleEntity, Boolean) -> Unit = { _, _ -> },
+    onDeleteSalary: (SalaryScheduleEntity) -> Unit = {}
 ) {
     val context = LocalContext.current
     var trailingZeros by remember { mutableStateOf(AppPrefs.trailingZeros(context)) }
@@ -86,9 +100,81 @@ fun SettingsScreen(
     var firstPin by remember { mutableStateOf("") }
     var newPinLength by remember { mutableStateOf(AppLock.pinLength(context)) }
 
-    when (pinFlow) {
-        "choose_length" -> AlertDialog(
-            onDismissRequest = { pinFlow = ""; pinError = null },
+    fun closePinFlow() {
+        pinFlow = ""
+        pinError = null
+        firstPin = ""
+    }
+
+    fun onPinComplete(p: String) {
+        when (pinFlow) {
+            "setup1" -> {
+                firstPin = p
+                pinError = null
+                pinFlow = "setup2"
+            }
+            "setup2" -> {
+                if (p == firstPin) {
+                    scope.launch {
+                        withContext(Dispatchers.Default) { AppLock.setPin(context, p) }
+                        lockEnabled = true
+                        closePinFlow()
+                    }
+                } else {
+                    firstPin = ""
+                    pinError = "PIN tidak sama. Ulangi dari awal."
+                    pinFlow = "setup1"
+                }
+            }
+            "verify_disable", "verify_change" -> scope.launch {
+                when (val r = withContext(Dispatchers.Default) { AppLock.verify(context, p) }) {
+                    PinResult.Success -> {
+                        pinError = null
+                        if (pinFlow == "verify_disable") {
+                            AppLock.disable(context)
+                            lockEnabled = false
+                            biometricOn = false
+                            closePinFlow()
+                        } else {
+                            pinFlow = "choose_length"
+                        }
+                    }
+                    is PinResult.Wrong -> pinError = "PIN salah. Sisa ${r.attemptsLeft} percobaan."
+                    is PinResult.Locked -> pinError = "Terlalu banyak percobaan. Coba lagi dalam ${(r.remainingMs + 999) / 1000} detik."
+                }
+            }
+        }
+    }
+
+    // Satu PinEntryDialog dipakai untuk semua langkah, jadi window dialog (dan status bar /
+    // navigation bar-nya) tidak dibuat ulang dan berkedip di tiap langkah.
+    val pinStepActive = pinFlow in setOf("setup1", "setup2", "verify_disable", "verify_change") ||
+        (pinFlow == "choose_length" && lockEnabled)
+    if (pinStepActive) {
+        PinEntryDialog(
+            title = when (pinFlow) {
+                "setup1" -> "Buat PIN"
+                "setup2" -> "Ulangi PIN"
+                "choose_length" -> "Ubah PIN"
+                else -> "Masukkan PIN saat ini"
+            },
+            subtitle = when (pinFlow) {
+                "setup1" -> "Masukkan $newPinLength digit PIN"
+                "setup2" -> "Masukkan PIN yang sama sekali lagi"
+                "choose_length" -> "Pilih panjang PIN baru"
+                "verify_disable" -> "Untuk menonaktifkan kunci aplikasi"
+                else -> "Untuk mengubah PIN"
+            },
+            error = pinError,
+            length = if (pinFlow == "setup1" || pinFlow == "setup2") newPinLength else AppLock.pinLength(context),
+            onDismiss = { closePinFlow() },
+            onComplete = { p -> onPinComplete(p) }
+        )
+    }
+
+    if (pinFlow == "choose_length") {
+        AlertDialog(
+            onDismissRequest = { closePinFlow() },
             title = { Text("Panjang PIN") },
             text = { Text("Pilih jumlah digit PIN yang ingin kamu pakai.") },
             confirmButton = {
@@ -101,66 +187,9 @@ fun SettingsScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pinFlow = ""; pinError = null }) { Text("Batal") }
+                TextButton(onClick = { closePinFlow() }) { Text("Batal") }
             }
         )
-        "setup1" -> PinEntryDialog(
-            title = "Buat PIN",
-            subtitle = "Masukkan $newPinLength digit PIN",
-            error = pinError,
-            length = newPinLength,
-            onDismiss = { pinFlow = ""; pinError = null }
-        ) { p ->
-            firstPin = p
-            pinError = null
-            pinFlow = "setup2"
-        }
-        "setup2" -> PinEntryDialog(
-            title = "Ulangi PIN",
-            subtitle = "Masukkan PIN yang sama sekali lagi",
-            error = pinError,
-            length = newPinLength,
-            onDismiss = { pinFlow = ""; pinError = null; firstPin = "" }
-        ) { p ->
-            if (p == firstPin) {
-                scope.launch {
-                    withContext(Dispatchers.Default) { AppLock.setPin(context, p) }
-                    lockEnabled = true
-                    pinFlow = ""
-                    pinError = null
-                    firstPin = ""
-                }
-            } else {
-                firstPin = ""
-                pinError = "PIN tidak sama. Ulangi dari awal."
-                pinFlow = "setup1"
-            }
-        }
-        "verify_disable", "verify_change" -> PinEntryDialog(
-            title = "Masukkan PIN saat ini",
-            subtitle = if (pinFlow == "verify_disable") "Untuk menonaktifkan kunci aplikasi" else "Untuk mengubah PIN",
-            error = pinError,
-            length = AppLock.pinLength(context),
-            onDismiss = { pinFlow = ""; pinError = null }
-        ) { p ->
-            scope.launch {
-                when (val r = withContext(Dispatchers.Default) { AppLock.verify(context, p) }) {
-                    PinResult.Success -> {
-                        pinError = null
-                        if (pinFlow == "verify_disable") {
-                            AppLock.disable(context)
-                            lockEnabled = false
-                            biometricOn = false
-                            pinFlow = ""
-                        } else {
-                            pinFlow = "choose_length"
-                        }
-                    }
-                    is PinResult.Wrong -> pinError = "PIN salah. Sisa ${r.attemptsLeft} percobaan."
-                    is PinResult.Locked -> pinError = "Terlalu banyak percobaan. Coba lagi dalam ${(r.remainingMs + 999) / 1000} detik."
-                }
-            }
-        }
     }
 
     Column(
@@ -190,6 +219,73 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.fillMaxSize()
         ) {
+            item {
+                SettingsSection(icon = Icons.Filled.Payments, title = "Gaji otomatis") {
+                    Text(
+                        "Pemasukan yang masuk sendiri ke rekening sesuai jadwal. Cocok untuk gaji, uang saku, atau pemasukan rutin.",
+                        color = Muted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    )
+                    if (salaries.isEmpty()) {
+                        Text(
+                            "Belum ada jadwal gaji.",
+                            color = Muted,
+                            fontSize = 13.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Paper)
+                                .padding(14.dp)
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            salaries.forEach { sal ->
+                                SalaryRow(
+                                    s = sal,
+                                    accountName = accounts.firstOrNull { it.id == sal.accountId }?.name ?: "Rekening",
+                                    onToggle = { onToggleSalary(sal, it) },
+                                    onEdit = { onEditSalary(sal) },
+                                    onDelete = { onDeleteSalary(sal) }
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = onAddSalary,
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Ink)
+                    ) {
+                        Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Tambah jadwal gaji")
+                    }
+
+                    Spacer(Modifier.height(18.dp))
+                    Text("Batas mengejar jadwal terlewat", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Dalam hari. Mencegah ratusan transaksi retroaktif jika app lama tidak dibuka. Berlaku juga untuk setor investasi dan tabungan otomatis.",
+                        color = Muted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(AppPrefs.CATCHUP_OPTIONS.size) { idx ->
+                            val d = AppPrefs.CATCHUP_OPTIONS[idx]
+                            Chip(
+                                label = "$d hari",
+                                selected = catchupDays == d
+                            ) {
+                                catchupDays = d
+                                AppPrefs.setMaxCatchupDays(context, d)
+                            }
+                        }
+                    }
+                }
+            }
+
             item {
                 SettingsSection(icon = Icons.Filled.Tune, title = "Input nominal") {
                     Text(
@@ -306,38 +402,6 @@ fun SettingsScreen(
                                 }
                             }
                         }
-                    }
-                }
-            }
-
-            item {
-                SettingsSection(icon = Icons.Filled.Schedule, title = "Jadwal otomatis") {
-                    Text(
-                        "Batas mengejar jadwal terlewat (hari). Mencegah ratusan transaksi retroaktif jika app lama tidak dibuka.",
-                        color = Muted,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(AppPrefs.CATCHUP_OPTIONS.size) { idx ->
-                            val d = AppPrefs.CATCHUP_OPTIONS[idx]
-                            Chip(
-                                label = "$d hari",
-                                selected = catchupDays == d
-                            ) {
-                                catchupDays = d
-                                AppPrefs.setMaxCatchupDays(context, d)
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = onAddSalary,
-                        modifier = Modifier.fillMaxWidth().height(44.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Ink)
-                    ) {
-                        Text("Tambah jadwal gaji")
                     }
                 }
             }
@@ -463,7 +527,7 @@ fun SettingsScreen(
                 SettingsSection(icon = Icons.Filled.Tune, title = "Tentang data") {
                     Text(
                         "Skala uang: 1 unit = Rp1 (rupiah utuh, bukan sen).\n" +
-                            "Versi app: 1.2, Room schema v13",
+                            "Versi app: 1.2, Room schema v15",
                         color = Muted,
                         fontSize = 12.sp,
                         lineHeight = 18.sp
@@ -495,6 +559,87 @@ private fun SettingsSection(
             }
             Spacer(Modifier.height(10.dp))
             content()
+        }
+    }
+}
+
+private fun freqLabel(f: String) = when (f) {
+    "daily" -> "Setiap hari"
+    "biweekly" -> "Setiap 2 minggu"
+    "monthly" -> "Setiap bulan"
+    else -> f
+}
+
+@Composable
+private fun SalaryRow(
+    s: SalaryScheduleEntity,
+    accountName: String,
+    onToggle: (Boolean) -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Paper)
+            .padding(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                Text(s.note, fontWeight = FontWeight.Bold, color = Ink, fontSize = 14.sp)
+                Text(
+                    listOf(rupiah(s.amount), freqLabel(s.frequency), "jam " + s.hourOfDay.toString().padStart(2, '0') + ":00")
+                        .joinToString(" · "),
+                    color = Ink,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    "Ke $accountName" + if (s.lastRunMillis != null) " · terakhir ${formatDate(s.lastRunMillis)}" else "",
+                    color = Muted,
+                    fontSize = 12.sp
+                )
+            }
+            Switch(
+                checked = s.enabled,
+                onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = Ink,
+                    uncheckedThumbColor = Color.White,
+                    uncheckedTrackColor = Muted
+                )
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "Edit",
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Ink)
+                    .clickable(onClick = onEdit)
+                    .padding(vertical = 9.dp)
+            )
+            Text(
+                "Hapus",
+                color = Red,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(RedSoft)
+                    .clickable(onClick = onDelete)
+                    .padding(vertical = 9.dp)
+            )
         }
     }
 }

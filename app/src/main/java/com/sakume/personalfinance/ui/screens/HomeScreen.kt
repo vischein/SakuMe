@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CallReceived
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -114,7 +115,8 @@ fun HomeScreen(
     val now = System.currentTimeMillis()
     val dueSoon = unpaidBills.filter { it.dueDateMillis in now..(now + threeDays) }
         .sortedBy { it.dueDateMillis }
-    val activeInvest = investments.filterNot { it.archived }
+    val activeInvest = investments.filter { !it.archived && !it.isGoal }
+    val activeGoals = investments.filter { !it.archived && it.isGoal }
     fun isCash(a: AccountEntity) = isCashAccount(a)
     val cashAccounts = accounts.filter { isCash(it) }
     val bankAccounts = accounts.filterNot { isCash(it) }
@@ -134,16 +136,6 @@ fun HomeScreen(
                 Column {
                     Text(timeGreeting(), color = Muted, fontSize = 14.sp)
                     Text("Keuangan saya", color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                }
-                Box(
-                    Modifier
-                        .size(44.dp)
-                        .background(CardBg, CircleShape)
-                        .border(1.dp, Color(0xFFEEEEEE), CircleShape)
-                        .clickable(onClick = onOpenSettings),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Outlined.Settings, null, tint = Ink, modifier = Modifier.size(22.dp))
                 }
             }
         }
@@ -312,14 +304,24 @@ fun HomeScreen(
         item { SectionHeader("Lainnya") }
 
         item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatTile(
+                    "Tabungan",
+                    rupiah(activeGoals.sumOf { it.value }),
+                    Icons.Filled.Savings,
+                    CardBg,
+                    Green,
+                    Modifier.weight(1f)
+                ) { onAction("invest:goals") }
                 StatTile(
                     "Investasi",
                     rupiah(activeInvest.sumOf { it.value }),
                     Icons.Filled.TrendingUp,
                     CardBg,
                     Accent,
-                    Modifier.fillMaxWidth()
+                    Modifier.weight(1f)
                 ) { onAction("invest") }
+            }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -63,8 +63,23 @@ data class InvestmentEntity(
     val name: String,
     val target: Long? = null,
     val value: Long = 0,
-    val archived: Boolean = false
-)
+    val archived: Boolean = false,
+
+    /** "platform" = platform investasi (Pluang, Bybit, dst). "goal" = target tabungan. */
+    val kind: String = KIND_PLATFORM,
+
+    /** Hanya untuk goal: tenggat opsional. */
+    val deadlineMillis: Long? = null,
+
+    /** Hanya untuk goal: nama kategori (lihat GOAL_CATEGORIES) untuk ikon & warna. */
+    val category: String = ""
+) {
+    val isGoal: Boolean get() = kind == KIND_GOAL
+}
+
+const val KIND_PLATFORM = "platform"
+const val KIND_GOAL = "goal"
+val GOAL_CATEGORIES = listOf("Darurat", "Liburan", "Gadget", "Kendaraan", "Rumah", "Pendidikan", "Lainnya")
 
 @Serializable
 @Entity(
