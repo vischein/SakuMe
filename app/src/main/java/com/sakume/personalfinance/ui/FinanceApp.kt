@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -86,13 +87,16 @@ fun FinanceApp(
     var historyAccountId by remember { mutableStateOf<String?>(null) }
     var billsProviderFilter by remember { mutableStateOf("Semua") }
     var debtFilter by remember { mutableStateOf("Semua") }
-    var investSegment by remember { mutableStateOf<Int?>(null) }
+    var investSegment by rememberSaveable { mutableStateOf<Int?>(null) }
     var dialog by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var importResult by remember { mutableStateOf("") }
     var backupRefresh by remember { mutableStateOf(0) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val investGoals = investments.filter { !it.archived && it.isGoal }
+    val investPlatforms = investments.filter { !it.archived && !it.isGoal }
+    val activeInvestSegment = investSegment ?: if (investGoals.isEmpty() && investPlatforms.isNotEmpty()) 1 else 0
 
     LaunchedEffect(requestedTab) {
         val t = requestedTab
@@ -198,13 +202,16 @@ fun FinanceApp(
         Scaffold(
             containerColor = Paper,
             bottomBar = {
-                SakuMeBottomBar(selected = tab, onSelect = { label ->
-                    tab = label
-                    subScreen = null
-                    if (label == "Bills") billsProviderFilter = "Semua"
-                    if (label == "More") debtFilter = "Semua"
-                    if (label == "Invest") investSegment = null
-                })
+                SakuMeBottomBar(
+                    selected = tab,
+                    investSegment = activeInvestSegment,
+                    onSelect = { label ->
+                        tab = label
+                        subScreen = null
+                        if (label == "Bills") billsProviderFilter = "Semua"
+                        if (label == "More") debtFilter = "Semua"
+                    }
+                )
             },
             content = { padding ->
                 Column(
@@ -365,7 +372,8 @@ fun FinanceApp(
                             accounts = accounts,
                             schedules = schedules,
                             holdings = holdings,
-                            initialSegment = investSegment,
+                            segment = activeInvestSegment,
+                            onSegmentChange = { investSegment = it },
                             onAdd = { dialog = "investment" },
                             onAddGoal = { dialog = "goal" },
                             onEditGoal = { a -> dialog = "editgoal:${a.id}" },

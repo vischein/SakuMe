@@ -44,7 +44,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -103,7 +102,8 @@ fun InvestmentScreen(
     accounts: List<AccountEntity>,
     schedules: List<ScheduledInvestmentEntity>,
     holdings: List<InvestmentHoldingEntity> = emptyList(),
-    initialSegment: Int? = null,
+    segment: Int,
+    onSegmentChange: (Int) -> Unit,
     onAdd: () -> Unit,
     onAddGoal: () -> Unit = {},
     onEditGoal: (InvestmentEntity) -> Unit = {},
@@ -125,9 +125,6 @@ fun InvestmentScreen(
     )
     val platforms = active.filterNot { it.isGoal }
     val accountName = { id: String -> accounts.firstOrNull { it.id == id }?.name ?: "Rekening" }
-
-    var chosen by rememberSaveable(initialSegment) { mutableStateOf<Int?>(initialSegment) }
-    val segment = chosen ?: if (goals.isEmpty() && platforms.isNotEmpty()) 1 else 0
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(
@@ -168,7 +165,7 @@ fun InvestmentScreen(
         SegmentedChips(
             options = listOf("Tabungan", "Investasi"),
             selectedIndex = segment,
-            onSelect = { chosen = it }
+            onSelect = onSegmentChange
         )
         Spacer(Modifier.height(14.dp))
 
