@@ -88,7 +88,7 @@ import com.sakume.personalfinance.ui.theme.Red
 import com.sakume.personalfinance.ui.theme.RedSoft
 
 
-private const val HIDDEN_MONEY = "•••••"
+private const val HIDDEN_MONEY = "Rp******"
 
 @Composable
 fun HomeScreen(
