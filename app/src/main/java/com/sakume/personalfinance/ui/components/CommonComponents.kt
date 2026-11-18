@@ -17,6 +17,28 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.NorthEast
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LocalGasStation
+import androidx.compose.material.icons.filled.MedicalServices
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.SmokingRooms
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Work
+import com.sakume.personalfinance.ui.formatTime
+import com.sakume.personalfinance.ui.isStartOfDay
+import com.sakume.personalfinance.ui.screens.normalizeCategory
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.SouthWest
 import androidx.compose.material3.Icon
@@ -56,6 +78,41 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.Dp
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+
 @Composable
 fun EmptyHint(text: String) {
     Text(
@@ -70,21 +127,89 @@ fun EmptyHint(text: String) {
     )
 }
 
+/**
+ * Header section. Tanpa parameter opsional tampilannya sama seperti sebelumnya.
+ *
+ * Mode collapse: set [collapsible] = true dan beri [onToggle]. Seluruh baris menjadi tombol toggle
+ * (chevron berputar halus); [action] ("Lihat semua") tetap tombol terpisah. Saat [expanded] = false,
+ * [summary] (bila ada) tampil sebagai satu baris kecil di bawah judul.
+ *
+ * Catatan: lambda trailing mengikat ke parameter TERAKHIR ([onToggle]); untuk [onAction] pakai named argument.
+ */
 @Composable
-fun SectionHeader(title: String, action: String? = null, onAction: (() -> Unit)? = null) {
+fun SectionHeader(
+    title: String,
+    action: String? = null,
+    onAction: (() -> Unit)? = null,
+    collapsible: Boolean = false,
+    expanded: Boolean = true,
+    summary: String? = null,
+    onToggle: (() -> Unit)? = null
+) {
+    val toggle: (() -> Unit)? = if (collapsible) onToggle else null
+    val chevron by animateFloatAsState(
+        targetValue = if (expanded) 90f else 0f,
+        animationSpec = tween(300, easing = FastOutSlowInEasing),
+        label = "sectionChevron"
+    )
+    val toggleModifier = if (toggle != null) {
+        Modifier
+            .clickable(
+                onClickLabel = if (expanded) "Ciutkan bagian $title" else "Buka bagian $title",
+                role = Role.Button,
+                onClick = toggle
+            )
+            .semantics { stateDescription = if (expanded) "Terbuka" else "Tertutup" }
+    } else Modifier
+
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 36.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .then(toggleModifier),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(title, color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                if (toggle != null) {
+                    Spacer(Modifier.width(2.dp))
+                    Icon(
+                        Icons.Filled.ChevronRight,
+                        contentDescription = null,
+                        tint = Muted,
+                        modifier = Modifier
+                            .size(22.dp)
+                            .graphicsLayer { rotationZ = chevron }
+                    )
+                }
+            }
+            AnimatedVisibility(
+                visible = toggle != null && !expanded && !summary.isNullOrBlank(),
+                enter = fadeIn(tween(250)) + expandVertically(tween(300, easing = FastOutSlowInEasing)),
+                exit = fadeOut(tween(150)) + shrinkVertically(tween(300, easing = FastOutSlowInEasing))
+            ) {
+                Text(
+                    text = summary.orEmpty(),
+                    color = Muted,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
         if (action != null && onAction != null) {
             Text(
                 text = action,
                 color = Muted,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.clickable(onClick = onAction)
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClickLabel = "$action $title", onClick = onAction)
+                    .padding(start = 10.dp, top = 8.dp, bottom = 8.dp)
             )
         }
     }
@@ -122,13 +247,47 @@ fun StatTile(
     }
 }
 
+/** Ikon per kategori (hasil normalizeCategory). Null = pakai fallback panah masuk/keluar. */
+private fun categoryIcon(normalized: String): ImageVector? = when (normalized) {
+    "Makan & minum" -> Icons.Filled.Restaurant
+    "Transport" -> Icons.Filled.DirectionsCar
+    "BBM" -> Icons.Filled.LocalGasStation
+    "Gaji" -> Icons.Filled.Work
+    "Tagihan" -> Icons.Filled.ReceiptLong
+    "Tunai" -> Icons.Filled.Payments
+    "Rokok" -> Icons.Filled.SmokingRooms
+    "Investasi" -> Icons.Filled.TrendingUp
+    "Admin bank" -> Icons.Filled.AccountBalance
+    "Belanja" -> Icons.Filled.ShoppingCart
+    "Hiburan" -> Icons.Filled.Movie
+    "Kesehatan" -> Icons.Filled.MedicalServices
+    "Pulsa & data" -> Icons.Filled.PhoneAndroid
+    "Sewa / kos" -> Icons.Filled.Home
+    "Utilitas" -> Icons.Filled.Bolt
+    else -> null
+}
+
+/**
+ * Baris transaksi.
+ *
+ * Default (dipakai HomeScreen): kartu putih mandiri, subtitle "rekening · tanggal · jam".
+ * Untuk histori: [grouped] = true (tanpa kartu sendiri; induk yang memberi latar/sudut/pemisah)
+ * dan [showDate] = false (tanggal sudah ada di header grup).
+ *
+ * [onLongPress] opsional: bila diisi, tekan-lama memanggilnya (dipakai untuk masuk mode seleksi).
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TransactionRow(
     t: TransactionEntity,
     accountName: String,
     selected: Boolean = false,
     selectionMode: Boolean = false,
-    onToggleSelect: (() -> Unit)? = null
+    onToggleSelect: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    grouped: Boolean = false,
+    showDate: Boolean = true,
+    onLongPress: (() -> Unit)? = null
 ) {
     val isTransfer = t.type == "transfer_in" || t.type == "transfer_out"
     val isIn = t.type == "income" || t.type == "transfer_in"
@@ -148,72 +307,107 @@ fun TransactionRow(
         isIn -> "+"
         else -> "-"
     }
+    val title = displayCategory(
+        t.note.ifBlank { t.category }.ifBlank { if (isIn) "Pemasukan" else "Pengeluaran" }
+    )
+    // Transfer antar rekening -> SwapHoriz; selain itu ikon kategori, fallback panah.
+    val isTransferDisplay = isTransfer || t.note == "Transfer"
+    val icon = remember(t.type, t.category, t.note, t.transferGroupId) {
+        if (isTransferDisplay) Icons.Filled.SwapHoriz
+        else categoryIcon(normalizeCategory(t.category.ifBlank { t.note }))
+            ?: if (isIn) Icons.Filled.SouthWest else Icons.Filled.NorthEast
+    }
+    val subtitle = remember(accountName, t.dateMillis, showDate) {
+        // Jam tepat 00:00 dianggap "tidak ada jam" (transaksi hanya mencatat tanggal)
+        val time = if (isStartOfDay(t.dateMillis)) null else formatTime(t.dateMillis)
+        listOfNotNull(accountName, if (showDate) formatDate(t.dateMillis) else null, time).joinToString(" · ")
+    }
+
+    val interactive = selectionMode && onToggleSelect != null
+    val tapModifier = when {
+        interactive -> Modifier.combinedClickable(
+            onClickLabel = if (selected) "Batalkan pilihan" else "Pilih transaksi",
+            role = Role.Checkbox,
+            onLongClick = onLongPress,
+            onClick = onToggleSelect!!
+        )
+        onLongPress != null -> Modifier.combinedClickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onLongClickLabel = "Pilih transaksi",
+            onLongClick = onLongPress,
+            onClick = {}
+        )
+        else -> Modifier
+    }
+    val selectedBg = if (grouped) Ink.copy(alpha = 0.06f) else Color(0xFFE8E8E8)
+    val rowBg by animateColorAsState(
+        if (selected) selectedBg else if (grouped) Color.Transparent else CardBg,
+        tween(160),
+        label = "txRowBg"
+    )
+
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) Color(0xFFE8E8E8) else CardBg)
-            .then(
-                if (selectionMode && onToggleSelect != null) Modifier.clickable(onClick = onToggleSelect)
-                else Modifier
-            )
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .then(if (grouped) Modifier else Modifier.clip(RoundedCornerShape(14.dp)))
+            .background(rowBg)
+            .then(tapModifier)
+            .padding(horizontal = 12.dp, vertical = if (grouped) 12.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (selectionMode) {
-            Box(
-                Modifier
-                    .size(22.dp)
-                    .clip(CircleShape)
-                    .background(if (selected) Ink else Color.White)
-                    .border(1.5.dp, if (selected) Ink else Color(0xFFCCCCCC), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                if (selected) {
-                    Text("✓", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        AnimatedVisibility(
+            visible = selectionMode,
+            enter = fadeIn(tween(150)) + expandHorizontally(tween(200, easing = FastOutSlowInEasing)),
+            exit = fadeOut(tween(100)) + shrinkHorizontally(tween(200, easing = FastOutSlowInEasing))
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(if (selected) Ink else Color.White)
+                        .border(1.5.dp, if (selected) Ink else Color(0xFFCCCCCC), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (selected) {
+                        Text("✓", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
+                Spacer(Modifier.width(10.dp))
             }
-            Spacer(Modifier.width(10.dp))
         }
         Box(
             Modifier.size(40.dp).background(soft, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                when {
-                    isTransfer -> Icons.Filled.SwapHoriz
-                    isIn -> Icons.Filled.SouthWest
-                    else -> Icons.Filled.NorthEast
-                },
-                null,
-                tint = tint,
-                modifier = Modifier.size(18.dp)
-            )
+            Icon(icon, null, tint = tint, modifier = Modifier.size(19.dp))
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                displayCategory(
-                    t.note.ifBlank { t.category }.ifBlank { if (isIn) "Pemasukan" else "Pengeluaran" }
-                ),
+                title,
                 fontWeight = FontWeight.SemiBold,
                 color = Ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                "$accountName · ${formatDate(t.dateMillis)}",
+                subtitle,
                 color = Muted,
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
+        Spacer(Modifier.width(8.dp))
         Text(
             "$sign${rupiah(t.amount)}",
             fontWeight = FontWeight.Bold,
             color = tint,
-            fontSize = 14.sp
+            fontSize = 14.sp,
+            maxLines = 1,
+            softWrap = false
         )
     }
 }
@@ -239,116 +433,427 @@ fun QuickAction(
     }
 }
 
-@Composable
-fun MetricChip(title: String, value: String, tint: Color, modifier: Modifier = Modifier) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(com.sakume.personalfinance.ui.theme.PanelSoft)
-            .padding(12.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(22.dp).background(tint.copy(alpha = 0.2f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    if (title.contains("Masuk")) Icons.Filled.SouthWest else Icons.Filled.NorthEast,
-                    null,
-                    tint = tint,
-                    modifier = Modifier.size(12.dp)
-                )
-            }
-            Spacer(Modifier.width(6.dp))
-            Text(title, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(value, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-    }
-}
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Chip family: SegmentedChips, SelectableChip, ActionChip, MetricChip
+// Semua turunan palet Ink/Muted/CardBg supaya konsisten di Paper maupun sheet putih.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Track lembut (turunan Ink) — otomatis menyesuaikan latar Paper / putih. */
+private val ChipTrack = Ink.copy(alpha = 0.055f)
+private val ChipHairline = Ink.copy(alpha = 0.09f)
+private val ChipPill = RoundedCornerShape(50)
+
+private val SegmentInset = 4.dp
+private val SegmentHeight = 44.dp
+private val SegmentTextPad = 14.dp
+private val SegmentMaxWidth = 220.dp
+private val SegmentIconSize = 16.dp
+private val SegmentGap = 6.dp
+
+/** Skala saat ditekan (0.96) dengan spring; dibaca di graphicsLayer supaya tanpa recomposition. */
 @Composable
-fun SelectableChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    val bg = if (selected) Ink else Color.White
-    val fg = if (selected) Color.White else Ink
-    Text(
-        text = label,
-        color = fg,
-        fontSize = 13.sp,
-        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(bg)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+private fun rememberPressScale(source: InteractionSource, pressedScale: Float = 0.96f): State<Float> {
+    val pressed by source.collectIsPressedAsState()
+    return animateFloatAsState(
+        targetValue = if (pressed) pressedScale else 1f,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMedium),
+        label = "chipPressScale"
     )
 }
 
+private fun badgeLabel(n: Int) = if (n > 99) "99+" else n.toString()
+
+@Composable
+private fun CountBadge(count: Int, selected: Boolean) {
+    val bg by animateColorAsState(
+        if (selected) Ink else Ink.copy(alpha = 0.10f),
+        tween(220),
+        label = "badgeBg"
+    )
+    val fg by animateColorAsState(
+        if (selected) Color.White else Muted,
+        tween(220),
+        label = "badgeFg"
+    )
+    Box(
+        Modifier
+            .height(18.dp)
+            .widthIn(min = 18.dp)
+            .background(bg, ChipPill)
+            .padding(horizontal = 5.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(badgeLabel(count), color = fg, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+private class SegMetric(val text: Dp, val natural: Dp)
+
+/**
+ * Segmented control berbentuk pill dengan indikator putih "mengambang" yang bergeser (spring).
+ *
+ * - [selectedIndex] boleh -1 / di luar range: indikator disembunyikan (dipakai Dialogs saat belum ada pilihan).
+ * - Lebar segmen rata bila semua label muat; bila tidak, tiap segmen mengikuti lebar kontennya
+ *   dan track bisa di-scroll horizontal (item terpilih otomatis di-scroll ke area terlihat).
+ * - [leadingIcons] / [badges] opsional (default null), diindeks sama dengan [options].
+ */
 @Composable
 fun SegmentedChips(
     options: List<String>,
     selectedIndex: Int,
     modifier: Modifier = Modifier,
     minSegmentWidth: Dp = 84.dp,
+    leadingIcons: List<ImageVector?>? = null,
+    badges: List<Int?>? = null,
     onSelect: (Int) -> Unit
 ) {
     if (options.isEmpty()) return
     val count = options.size
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    val labelStyle = LocalTextStyle.current.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val segW = maxOf(maxWidth / count, minSegmentWidth)
-        val offsetX by animateDpAsState(
-            targetValue = segW * selectedIndex.coerceIn(0, count - 1),
-            label = "segmentOffset"
+        val trackWidth = maxWidth
+        val innerAvail = maxOf(trackWidth - SegmentInset * 2, 0.dp)
+
+        // Lebar teks diukur dengan SemiBold (bobot terlebar) => slot tidak bergeser saat bobot berubah.
+        val metrics = remember(options, leadingIcons, badges, labelStyle, density) {
+            options.mapIndexed { i, label ->
+                val textPx = measurer.measure(text = label, style = labelStyle, maxLines = 1).size.width
+                val textDp = with(density) { textPx.toDp() }
+                var w = textDp + SegmentTextPad * 2
+                if (leadingIcons?.getOrNull(i) != null) w += SegmentIconSize + SegmentGap
+                badges?.getOrNull(i)?.let { n ->
+                    w += maxOf(18.dp, 8.dp + 6.dp * badgeLabel(n).length) + SegmentGap
+                }
+                SegMetric(text = textDp, natural = minOf(w, SegmentMaxWidth))
+            }
+        }
+
+        val equalW = maxOf(innerAvail / count, minSegmentWidth)
+        val widths: List<Dp> = if (metrics.all { it.natural <= equalW }) {
+            List(count) { equalW }
+        } else {
+            val base = metrics.map { maxOf(it.natural, minSegmentWidth) }
+            val total = base.fold(0.dp) { a, b -> a + b }
+            if (total < innerAvail) {
+                val extra = (innerAvail - total) / count
+                base.map { it + extra }
+            } else base
+        }
+        val starts = remember(widths) {
+            var acc = 0.dp
+            widths.map { w -> val s = acc; acc += w; s }
+        }
+        val totalWidth = widths.fold(0.dp) { a, b -> a + b }
+
+        val hasSelection = selectedIndex in 0 until count
+        val sel = selectedIndex.coerceIn(0, count - 1)
+        val slide = spring<Dp>(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)
+        val indicatorX by animateDpAsState(starts[sel], slide, label = "segmentX")
+        val indicatorW by animateDpAsState(widths[sel], slide, label = "segmentW")
+        val indicatorAlpha by animateFloatAsState(
+            if (hasSelection) 1f else 0f,
+            tween(200),
+            label = "segmentAlpha"
         )
+
+        // Auto-scroll: pusatkan segmen terpilih bila track bisa digulir.
+        val scrollState = rememberScrollState()
+        val firstScroll = remember { mutableStateOf(true) }
+        LaunchedEffect(selectedIndex, widths, scrollState.maxValue) {
+            if (!hasSelection) return@LaunchedEffect
+            val target = with(density) {
+                (SegmentInset + starts[sel] + widths[sel] / 2 - trackWidth / 2).roundToPx()
+            }
+            if (firstScroll.value) {
+                scrollState.scrollTo(target)
+                // maxValue masih 0 sebelum layout selesai: tunda penandaan agar posisi awal tidak beranimasi
+                if (scrollState.maxValue > 0 || target <= 0) firstScroll.value = false
+            } else {
+                scrollState.animateScrollTo(target)
+            }
+        }
+
         Box(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(50))
-                .background(Color(0xFFE8E8E8))
-                .horizontalScroll(rememberScrollState())
+                .height(SegmentHeight)
+                .clip(ChipPill)
+                .background(ChipTrack)
+                .horizontalScroll(scrollState)
         ) {
-            Box(Modifier.width(segW * count).height(44.dp)) {
-                if (selectedIndex in 0 until count) {
-                    Box(
-                        Modifier
-                        .offset(x = offsetX)
-                        .width(segW)
+            Box(
+                Modifier
+                    .padding(SegmentInset)
+                    .width(totalWidth)
+                    .fillMaxHeight()
+            ) {
+                Box(
+                    Modifier
+                        .offset(x = indicatorX)
+                        .width(indicatorW)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(50))
-                        .background(Color.White)
-                    )
-                }
+                        .alpha(indicatorAlpha)
+                        .shadow(
+                            elevation = 2.5.dp,
+                            shape = ChipPill,
+                            clip = false,
+                            ambientColor = Ink.copy(alpha = 0.10f),
+                            spotColor = Ink.copy(alpha = 0.18f)
+                        )
+                        .background(Color.White, ChipPill)
+                        .border(0.5.dp, ChipHairline, ChipPill)
+                )
                 Row(Modifier.fillMaxSize()) {
                     options.forEachIndexed { i, label ->
-                        val selected = i == selectedIndex
-                        Box(
-                            Modifier
-                                .width(segW)
-                                .fillMaxHeight()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = { onSelect(i) }
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = label,
-                                color = if (selected) Ink else Muted,
-                                fontSize = 13.sp,
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 8.dp)
-                            )
-                        }
+                        SegmentItem(
+                            label = label,
+                            selected = i == selectedIndex,
+                            width = widths[i],
+                            textWidth = metrics[i].text,
+                            icon = leadingIcons?.getOrNull(i),
+                            badge = badges?.getOrNull(i),
+                            onClick = { onSelect(i) }
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SegmentItem(
+    label: String,
+    selected: Boolean,
+    width: Dp,
+    textWidth: Dp,
+    icon: ImageVector?,
+    badge: Int?,
+    onClick: () -> Unit
+) {
+    val source = remember { MutableInteractionSource() }
+    val scale by rememberPressScale(source)
+    val fg by animateColorAsState(
+        if (selected) Ink else Muted,
+        tween(220),
+        label = "segmentText"
+    )
+    Box(
+        Modifier
+            .width(width)
+            .fillMaxHeight()
+            .selectable(
+                selected = selected,
+                interactionSource = source,
+                indication = null,
+                role = Role.Tab,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            Modifier
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(SegmentIconSize))
+                Spacer(Modifier.width(SegmentGap))
+            }
+            Text(
+                text = label,
+                color = fg,
+                fontSize = 13.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                // lebar minimum = lebar SemiBold => kotak teks konstan, glyph tetap di tengah
+                modifier = Modifier.widthIn(min = textWidth).weight(1f, fill = false)
+            )
+            if (badge != null) {
+                Spacer(Modifier.width(SegmentGap))
+                CountBadge(badge, selected)
+            }
+        }
+    }
+}
+
+/**
+ * Chip filter tunggal (pill). Terpilih = Ink penuh, tidak terpilih = track lembut.
+ * Warna dianimasikan, ditekan = scale 0.96. Lebar tidak bergeser saat bobot teks berubah.
+ * [contentDescription] opsional; bila null, label dibaca apa adanya.
+ */
+@Composable
+fun SelectableChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    leadingIcon: ImageVector? = null,
+    contentDescription: String? = null
+) {
+    val source = remember { MutableInteractionSource() }
+    val scale by rememberPressScale(source)
+    val bg by animateColorAsState(if (selected) Ink else ChipTrack, tween(220), label = "chipBg")
+    val fg by animateColorAsState(if (selected) Color.White else Muted, tween(220), label = "chipFg")
+    val border by animateColorAsState(if (selected) Ink else ChipHairline, tween(220), label = "chipBorder")
+    val labelSemantics = if (contentDescription != null) Modifier.clearAndSetSemantics { } else Modifier
+
+    Row(
+        modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .heightIn(min = 36.dp)
+            .clip(ChipPill)
+            .background(bg)
+            .border(1.dp, border, ChipPill)
+            .semantics {
+                this.selected = selected
+                if (contentDescription != null) this.contentDescription = contentDescription
+            }
+            .clickable(
+                interactionSource = source,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick
+            )
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (leadingIcon != null) {
+            Icon(leadingIcon, contentDescription = null, tint = fg, modifier = Modifier.size(SegmentIconSize))
+            Spacer(Modifier.width(SegmentGap))
+        }
+        Box(contentAlignment = Alignment.Center) {
+            // Teks tak terlihat berbobot SemiBold menjaga lebar konstan
+            Text(
+                label,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                modifier = Modifier.alpha(0f).clearAndSetSemantics { }
+            )
+            Text(
+                label,
+                color = fg,
+                fontSize = 13.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = labelSemantics
+            )
+        }
+    }
+}
+
+/**
+ * Tombol aksi bergaya chip (pill, ikon opsional). Feedback: scale 0.96 + container menggelap tipis.
+ * [contentDescription] opsional; bila null, label dibaca apa adanya.
+ */
+@Composable
+fun ActionChip(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    contentDescription: String? = null,
+    containerColor: Color = CardBg,
+    contentColor: Color = Ink
+) {
+    val source = remember { MutableInteractionSource() }
+    val scale by rememberPressScale(source)
+    val pressed by source.collectIsPressedAsState()
+    val bg by animateColorAsState(
+        if (pressed) Ink.copy(alpha = 0.07f).compositeOver(containerColor) else containerColor,
+        tween(150),
+        label = "actionChipBg"
+    )
+    val labelSemantics = if (contentDescription != null) Modifier.clearAndSetSemantics { } else Modifier
+
+    Row(
+        modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .heightIn(min = 38.dp)
+            .clip(ChipPill)
+            .background(bg)
+            .border(1.dp, ChipHairline, ChipPill)
+            .semantics { if (contentDescription != null) this.contentDescription = contentDescription }
+            .clickable(
+                interactionSource = source,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick
+            )
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(SegmentIconSize))
+            Spacer(Modifier.width(SegmentGap))
+        }
+        Text(
+            label,
+            color = contentColor,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = labelSemantics
+        )
+    }
+}
+
+/** Kartu metrik di hero (non-clickable). [icon] opsional; default: panah masuk/keluar dari judul. */
+@Composable
+fun MetricChip(
+    title: String,
+    value: String,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null
+) {
+    val glyph = icon ?: if (title.contains("Masuk", ignoreCase = true)) Icons.Filled.SouthWest else Icons.Filled.NorthEast
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier
+            .clip(shape)
+            .background(PanelSoft)
+            .border(0.5.dp, Color.White.copy(alpha = 0.08f), shape)
+            .semantics(mergeDescendants = true) { }
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(24.dp).background(tint.copy(alpha = 0.18f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(glyph, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                title,
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            value,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

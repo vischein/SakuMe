@@ -91,3 +91,46 @@ fun startOfMonthMillis(): Long =
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
+
+// ── Helper tanggal/jam untuk histori transaksi ───────────────────────────────
+
+private val ID_LOCALE = Locale("id", "ID")
+
+/** Awal hari (00:00:00.000) dari [ms]; default hari ini. */
+fun startOfDayMillis(ms: Long = System.currentTimeMillis()): Long =
+    Calendar
+        .getInstance()
+        .apply {
+            timeInMillis = ms
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+/** Awal minggu (Senin 00:00) dari minggu yang memuat [ms]; default minggu ini. */
+fun startOfWeekMillis(ms: Long = System.currentTimeMillis()): Long {
+    val cal = Calendar.getInstance().apply { timeInMillis = startOfDayMillis(ms) }
+    // Calendar.SUNDAY = 1 ... SATURDAY = 7  =>  selisih hari dari Senin: Min=6, Sen=0, ..., Sab=5
+    val sinceMonday = (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    cal.add(Calendar.DAY_OF_MONTH, -sinceMonday)
+    return cal.timeInMillis
+}
+
+/** Jam "HH:mm". */
+fun formatTime(ms: Long): String = SimpleDateFormat("HH:mm", ID_LOCALE).format(Date(ms))
+
+/** True bila [ms] persis 00:00:00.000 (kemungkinan transaksi hanya mencatat tanggal, tanpa jam). */
+fun isStartOfDay(ms: Long): Boolean = ms == startOfDayMillis(ms)
+
+/** Label header grup: "Hari ini", "Kemarin", atau "Senin, 17 Nov 2026". [dayStartMillis] = awal hari. */
+fun dayHeaderLabel(dayStartMillis: Long, todayStartMillis: Long = startOfDayMillis()): String {
+    val zone = java.time.ZoneId.systemDefault()
+    val day = java.time.Instant.ofEpochMilli(dayStartMillis).atZone(zone).toLocalDate()
+    val today = java.time.Instant.ofEpochMilli(todayStartMillis).atZone(zone).toLocalDate()
+    return when (java.time.temporal.ChronoUnit.DAYS.between(day, today)) {
+        0L -> "Hari ini"
+        1L -> "Kemarin"
+        else -> SimpleDateFormat("EEEE, d MMM yyyy", ID_LOCALE).format(Date(dayStartMillis))
+    }
+}

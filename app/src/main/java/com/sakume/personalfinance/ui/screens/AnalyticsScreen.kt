@@ -1,5 +1,19 @@
 package com.sakume.personalfinance.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.sakume.personalfinance.ui.theme.Accent
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +57,7 @@ import com.sakume.personalfinance.data.AccountEntity
 import com.sakume.personalfinance.data.BillEntity
 import com.sakume.personalfinance.data.DebtEntity
 import com.sakume.personalfinance.data.TransactionEntity
+import com.sakume.personalfinance.ui.components.ActionChip
 import com.sakume.personalfinance.ui.components.EmptyHint
 import com.sakume.personalfinance.ui.components.SegmentedChips
 import com.sakume.personalfinance.ui.daysUntilDue
@@ -151,11 +166,11 @@ fun normalizeCategory(raw: String): String {
     return first.replaceFirstChar { it.uppercase() }
 }
 
-private data class SpendBucket(val startMillis: Long, val amount: Long)
+private data class SpendBucket(val startMillis: Long, val amount: Long, val endMillis: Long)
 
 private data class SpendSeries(val buckets: List<SpendBucket>, val unit: String)
 
-private data class Slice(val label: String, val amount: Long, val color: Color)
+private data class Slice(val label: String, val amount: Long, val color: Color, val categories: Set<String> = emptySet())
 
 private fun buildSpendSeries(expenses: List<TransactionEntity>, period: PeriodRange): SpendSeries {
     val spanDays = (period.end - period.start) / 86_400_000L
@@ -177,7 +192,11 @@ private fun buildSpendSeries(expenses: List<TransactionEntity>, period: PeriodRa
         val idx = starts.indexOfLast { it <= t.dateMillis }.coerceAtLeast(0)
         sums[idx] += t.amount
     }
-    return SpendSeries(starts.mapIndexed { i, start -> SpendBucket(start, sums[i]) }, unit)
+    // Bucket i = [start_i, start_{i+1}); bucket terakhir sampai akhir periode (sama dengan cara expense dihitung di atas)
+    return SpendSeries(
+        starts.mapIndexed { i, start -> SpendBucket(start, sums[i], starts.getOrNull(i + 1) ?: period.end) },
+        unit
+    )
 }
 
 private fun bucketLabel(ms: Long, unit: String): String {
@@ -188,9 +207,27 @@ private fun bucketLabel(ms: Long, unit: String): String {
 }
 
 private fun toSlices(entries: List<Map.Entry<String, Long>>, palette: List<Color>, maxShown: Int = 5): List<Slice> {
-    val shown = entries.take(maxShown).mapIndexed { i, e -> Slice(e.key, e.value, palette[i % palette.size]) }
+    val shown = entries.take(maxShown).mapIndexed { i, e -> Slice(e.key, e.value, palette[i % palette.size], setOf(e.key)) }
     val rest = entries.drop(maxShown)
-    return if (rest.isEmpty()) shown else shown + Slice("Lainnya (${rest.size})", rest.sumOf { it.value }, SliceRest)
+    return if (rest.isEmpty()) shown
+    else shown + Slice("Lainnya (${rest.size})", rest.sumOf { it.value }, SliceRest, rest.map { it.key }.toSet())
+}
+
+private fun Modifier.tappable(label: String, onClick: () -> Unit): Modifier =
+    this
+        .clip(RoundedCornerShape(10.dp))
+        .clickable(onClickLabel = label, role = Role.Button, onClick = onClick)
+
+@Composable
+private fun RowChevron(tint: Color = Muted) {
+    Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+}
+
+private fun dayRange(millis: Long): Pair<Long, Long> {
+    val cal = calendarStartOfDay(Calendar.getInstance().apply { timeInMillis = millis })
+    val start = cal.timeInMillis
+    cal.add(Calendar.DAY_OF_MONTH, 1)
+    return start to cal.timeInMillis
 }
 
 @Composable
@@ -199,11 +236,18 @@ fun AnalyticsScreen(
     tx: List<TransactionEntity>,
     bills: List<BillEntity> = emptyList(),
     debts: List<DebtEntity> = emptyList(),
-    onManageAccounts: () -> Unit = {}
+    onManageAccounts: () -> Unit = {},
+    onOpenHistory: (HistoryFilter) -> Unit = {},
+    onOpenDebts: (String) -> Unit = {},
+    periodIndex: Int? = null,
+    onPeriodIndexChange: (Int) -> Unit = {},
+    listState: LazyListState = rememberLazyListState()
 ) {
     val periods = remember { periodRanges() }
-    var periodIndex by remember { mutableStateOf(0) }
-    val period = periods[periodIndex]
+    // periodIndex bisa diangkat (hoisted) ke FinanceApp; tanpa itu pakai state lokal seperti dulu
+    var localPeriodIndex by remember { mutableStateOf(0) }
+    val selectedPeriod = (periodIndex ?: localPeriodIndex).coerceIn(0, periods.lastIndex)
+    val period = periods[selectedPeriod]
     val prev = remember(period) { previousRange(period) }
 
     val inPeriod = remember(tx, period) {
@@ -293,6 +337,7 @@ fun AnalyticsScreen(
     val incomeColors = categoryColors.drop(2) + categoryColors.take(2)
 
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .background(Paper),
@@ -313,16 +358,11 @@ fun AnalyticsScreen(
                         fontSize = 13.sp
                     )
                 }
-                Text(
-                    "Kelola rekening",
-                    color = Ink,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(CardBg)
-                        .clickable(onClick = onManageAccounts)
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ActionChip(
+                    label = "Kelola rekening",
+                    onClick = onManageAccounts,
+                    icon = Icons.Filled.AccountBalanceWallet,
+                    contentDescription = "Kelola rekening"
                 )
             }
         }
@@ -330,8 +370,11 @@ fun AnalyticsScreen(
         item {
             SegmentedChips(
                 options = periods.map { it.label },
-                selectedIndex = periodIndex,
-                onSelect = { periodIndex = it }
+                selectedIndex = selectedPeriod,
+                onSelect = {
+                    localPeriodIndex = it
+                    onPeriodIndexChange(it)
+                }
             )
         }
 
@@ -344,7 +387,27 @@ fun AnalyticsScreen(
                 inChangePct = inChangePct,
                 outChangePct = outChangePct,
                 savingsRate = savingsRate,
-                insight = insight
+                insight = insight,
+                onOpenIn = {
+                    onOpenHistory(
+                        HistoryFilter(
+                            type = "income",
+                            startMillis = period.start,
+                            endMillis = period.end,
+                            title = "Semua pemasukan · ${period.label}"
+                        )
+                    )
+                },
+                onOpenOut = {
+                    onOpenHistory(
+                        HistoryFilter(
+                            type = "expense",
+                            startMillis = period.start,
+                            endMillis = period.end,
+                            title = "Semua pengeluaran · ${period.label}"
+                        )
+                    )
+                }
             )
         }
 
@@ -355,7 +418,23 @@ fun AnalyticsScreen(
                 SpendTrendCard(
                     series = series,
                     dailyAvg = dailyAvg,
-                    transactionCount = expenses.size
+                    transactionCount = expenses.size,
+                    onBarClick = { b ->
+                        val label = bucketLabel(b.startMillis, series.unit)
+                        val title = when (series.unit) {
+                            "mingguan" -> "Pengeluaran · minggu $label"
+                            "bulanan" -> "Pengeluaran · $label"
+                            else -> "Pengeluaran · $label"
+                        }
+                        onOpenHistory(
+                            HistoryFilter(
+                                type = "expense",
+                                startMillis = b.startMillis,
+                                endMillis = b.endMillis,
+                                title = title
+                            )
+                        )
+                    }
                 )
             }
         }
@@ -365,13 +444,36 @@ fun AnalyticsScreen(
                 CompositionCard(
                     title = "Pengeluaran per kategori",
                     total = totalOut,
-                    slices = toSlices(outByCategory, categoryColors)
+                    slices = toSlices(outByCategory, categoryColors),
+                    onSliceClick = { sl ->
+                        onOpenHistory(
+                            HistoryFilter(
+                                type = "expense",
+                                categories = sl.categories,
+                                startMillis = period.start,
+                                endMillis = period.end,
+                                title = "${sl.label} · ${period.label}"
+                            )
+                        )
+                    }
                 )
             }
         }
 
         if (topExpenses.isNotEmpty()) {
-            item { TopExpensesCard(topExpenses) }
+            item {
+                TopExpensesCard(topExpenses) { t ->
+                    val (dayStart, dayEnd) = dayRange(t.dateMillis)
+                    onOpenHistory(
+                        HistoryFilter(
+                            type = "expense",
+                            startMillis = dayStart,
+                            endMillis = dayEnd,
+                            title = "Pengeluaran · ${formatDate(t.dateMillis)}"
+                        )
+                    )
+                }
+            }
         }
 
         if (inByCategory.isNotEmpty()) {
@@ -379,12 +481,34 @@ fun AnalyticsScreen(
                 CompositionCard(
                     title = "Pemasukan per kategori",
                     total = totalIn,
-                    slices = toSlices(inByCategory, incomeColors)
+                    slices = toSlices(inByCategory, incomeColors),
+                    onSliceClick = { sl ->
+                        onOpenHistory(
+                            HistoryFilter(
+                                type = "income",
+                                categories = sl.categories,
+                                startMillis = period.start,
+                                endMillis = period.end,
+                                title = "${sl.label} · ${period.label}"
+                            )
+                        )
+                    }
                 )
             }
         }
 
-        item { AccountsCard(accounts, spentByAccount) }
+        item {
+            AccountsCard(accounts, spentByAccount) { a ->
+                onOpenHistory(
+                    HistoryFilter(
+                        startMillis = period.start,
+                        endMillis = period.end,
+                        accountId = a.id,
+                        title = "${a.name} · ${period.label}"
+                    )
+                )
+            }
+        }
 
         if (activeDebts.isNotEmpty() || billsPaidTotal > 0L || debtPaidTotal > 0L) {
             item {
@@ -394,7 +518,9 @@ fun AnalyticsScreen(
                     overdueCount = overdueCount,
                     billsPaidCount = billsPaid.size,
                     billsPaidTotal = billsPaidTotal,
-                    debtPaidTotal = debtPaidTotal
+                    debtPaidTotal = debtPaidTotal,
+                    onOpenPiutang = { onOpenDebts("Piutang") },
+                    onOpenUtang = { onOpenDebts("Utang") }
                 )
             }
         }
@@ -446,7 +572,9 @@ private fun NetHero(
     inChangePct: Double,
     outChangePct: Double,
     savingsRate: Double?,
-    insight: String
+    insight: String,
+    onOpenIn: () -> Unit = {},
+    onOpenOut: () -> Unit = {}
 ) {
     Column(
         Modifier
@@ -508,7 +636,9 @@ private fun NetHero(
                 changePct = inChangePct,
                 positiveIsGood = true,
                 dot = Green,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                onClick = if (totalIn > 0L) onOpenIn else null,
+                onClickLabel = "Lihat semua pemasukan"
             )
             HeroFlow(
                 label = "Keluar",
@@ -516,7 +646,9 @@ private fun NetHero(
                 changePct = outChangePct,
                 positiveIsGood = false,
                 dot = Red,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                onClick = if (totalOut > 0L) onOpenOut else null,
+                onClickLabel = "Lihat semua pengeluaran"
             )
         }
         Spacer(Modifier.height(16.dp))
@@ -533,15 +665,23 @@ private fun HeroFlow(
     changePct: Double,
     positiveIsGood: Boolean,
     dot: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    onClickLabel: String = ""
 ) {
     val isUp = changePct >= 0
     val good = if (positiveIsGood) isUp else !isUp
-    Column(modifier) {
+    Column(
+        if (onClick != null) modifier.tappable(onClickLabel, onClick).padding(vertical = 2.dp) else modifier
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(8.dp).background(dot, CircleShape))
             Spacer(Modifier.width(6.dp))
             Text(label, color = HeroMuted, fontSize = 12.sp)
+            if (onClick != null) {
+                Spacer(Modifier.width(2.dp))
+                RowChevron(HeroMuted)
+            }
         }
         Spacer(Modifier.height(2.dp))
         Text(
@@ -574,7 +714,14 @@ private fun HeroFlow(
 }
 
 @Composable
-private fun SpendTrendCard(series: SpendSeries, dailyAvg: Long, transactionCount: Int) {
+private fun SpendTrendCard(
+    series: SpendSeries,
+    dailyAvg: Long,
+    transactionCount: Int,
+    onBarClick: ((SpendBucket) -> Unit)? = null
+) {
+    var flashIndex by remember { mutableStateOf(-1) }
+    val scope = rememberCoroutineScope()
     val max = series.buckets.maxOfOrNull { it.amount } ?: 0L
     val peakIndex = if (max > 0L) series.buckets.indexOfFirst { it.amount == max } else -1
     Column(
@@ -610,20 +757,24 @@ private fun SpendTrendCard(series: SpendSeries, dailyAvg: Long, transactionCount
         ) {
             series.buckets.forEachIndexed { i, b ->
                 val fraction = if (max > 0L) (b.amount.toFloat() / max.toFloat()).coerceIn(0.04f, 1f) else 0.04f
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight(fraction)
-                            .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
-                            .background(if (i == peakIndex) Ink else BarIdle)
-                    )
-                }
+                val label = bucketLabel(b.startMillis, series.unit)
+                TrendBar(
+                    modifier = Modifier.weight(1f),
+                    fraction = fraction,
+                    baseColor = if (i == peakIndex) Ink else BarIdle,
+                    flashing = flashIndex == i,
+                    onClickLabel = "Lihat pengeluaran $label",
+                    description = "$label, ${rupiah(b.amount)}",
+                    onClick = if (onBarClick != null && b.amount > 0L) {
+                        {
+                            flashIndex = i
+                            scope.launch {
+                                delay(160) // beri waktu highlight terlihat sebelum pindah layar
+                                onBarClick(b)
+                            }
+                        }
+                    } else null
+                )
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -644,23 +795,87 @@ private fun SpendTrendCard(series: SpendSeries, dailyAvg: Long, transactionCount
 }
 
 @Composable
-private fun StatCell(label: String, value: String, valueColor: Color, modifier: Modifier = Modifier) {
-    Column(modifier) {
-        Text(label, color = Muted, fontSize = 12.sp)
-        Spacer(Modifier.height(2.dp))
-        Text(
-            value,
-            color = valueColor,
-            fontWeight = FontWeight.Bold,
-            fontSize = 15.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+private fun TrendBar(
+    modifier: Modifier,
+    fraction: Float,
+    baseColor: Color,
+    flashing: Boolean,
+    onClickLabel: String,
+    description: String,
+    onClick: (() -> Unit)?
+) {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val color by animateColorAsState(
+        if (pressed || flashing) Accent else baseColor,
+        tween(150),
+        label = "trendBar"
+    )
+    Box(
+        modifier
+            .fillMaxHeight()
+            .then(
+                if (onClick != null) {
+                    Modifier
+                        .clickable(
+                            interactionSource = source,
+                            indication = null,
+                            onClickLabel = onClickLabel,
+                            role = Role.Button,
+                            onClick = onClick
+                        )
+                        .semantics { contentDescription = description }
+                } else Modifier
+            ),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(fraction)
+                .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                .background(color)
         )
     }
 }
 
 @Composable
-private fun CompositionCard(title: String, total: Long, slices: List<Slice>) {
+private fun StatCell(
+    label: String,
+    value: String,
+    valueColor: Color,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    onClickLabel: String = ""
+) {
+    Column(if (onClick != null) modifier.tappable(onClickLabel, onClick).padding(vertical = 2.dp) else modifier) {
+        Text(label, color = Muted, fontSize = 12.sp)
+        Spacer(Modifier.height(2.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                value,
+                color = valueColor,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            if (onClick != null) {
+                Spacer(Modifier.width(2.dp))
+                RowChevron()
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompositionCard(
+    title: String,
+    total: Long,
+    slices: List<Slice>,
+    onSliceClick: ((Slice) -> Unit)? = null
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -694,10 +909,21 @@ private fun CompositionCard(title: String, total: Long, slices: List<Slice>) {
             }
         }
         Spacer(Modifier.height(14.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (onSliceClick != null) 2.dp else 10.dp)) {
             slices.forEach { s ->
                 val pct = if (total > 0L) s.amount.toDouble() / total.toDouble() * 100.0 else 0.0
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (onSliceClick != null) {
+                                Modifier
+                                    .tappable("Lihat transaksi ${s.label}") { onSliceClick(s) }
+                                    .padding(vertical = 4.dp)
+                            } else Modifier
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Box(Modifier.size(10.dp).background(s.color, CircleShape))
                     Spacer(Modifier.width(10.dp))
                     Text(
@@ -718,6 +944,7 @@ private fun CompositionCard(title: String, total: Long, slices: List<Slice>) {
                         textAlign = TextAlign.End,
                         modifier = Modifier.width(40.dp)
                     )
+                    if (onSliceClick != null) RowChevron()
                 }
             }
         }
@@ -725,7 +952,7 @@ private fun CompositionCard(title: String, total: Long, slices: List<Slice>) {
 }
 
 @Composable
-private fun TopExpensesCard(items: List<TransactionEntity>) {
+private fun TopExpensesCard(items: List<TransactionEntity>, onItemClick: (TransactionEntity) -> Unit = {}) {
     val maxAmount = (items.firstOrNull()?.amount ?: 1L).coerceAtLeast(1L)
     Column(
         Modifier
@@ -738,7 +965,11 @@ private fun TopExpensesCard(items: List<TransactionEntity>) {
         Spacer(Modifier.height(12.dp))
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items.forEach { t ->
-                Column {
+                Column(
+                    Modifier
+                        .tappable("Lihat pengeluaran tanggal ${formatDate(t.dateMillis)}") { onItemClick(t) }
+                        .padding(vertical = 2.dp)
+                ) {
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -757,6 +988,7 @@ private fun TopExpensesCard(items: List<TransactionEntity>) {
                         }
                         Spacer(Modifier.width(8.dp))
                         Text(rupiah(t.amount), color = Red, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        RowChevron()
                     }
                     Spacer(Modifier.height(6.dp))
                     LinearProgressIndicator(
@@ -775,7 +1007,11 @@ private fun TopExpensesCard(items: List<TransactionEntity>) {
 }
 
 @Composable
-private fun AccountsCard(accounts: List<AccountEntity>, spentByAccount: Map<String, Long>) {
+private fun AccountsCard(
+    accounts: List<AccountEntity>,
+    spentByAccount: Map<String, Long>,
+    onAccountClick: (AccountEntity) -> Unit = {}
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -795,6 +1031,7 @@ private fun AccountsCard(accounts: List<AccountEntity>, spentByAccount: Map<Stri
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .tappable("Lihat histori rekening ${a.name}") { onAccountClick(a) }
                     .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -824,6 +1061,7 @@ private fun AccountsCard(accounts: List<AccountEntity>, spentByAccount: Map<Stri
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(rupiah(a.balance), color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                RowChevron()
             }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(LineColor))
@@ -842,7 +1080,9 @@ private fun ObligationsCard(
     overdueCount: Int,
     billsPaidCount: Int,
     billsPaidTotal: Long,
-    debtPaidTotal: Long
+    debtPaidTotal: Long,
+    onOpenPiutang: () -> Unit = {},
+    onOpenUtang: () -> Unit = {}
 ) {
     Column(
         Modifier
@@ -854,8 +1094,22 @@ private fun ObligationsCard(
         Text("Utang, piutang & tagihan", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Ink)
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth()) {
-            StatCell("Piutang belum diterima", rupiah(piutangLeft), Green, Modifier.weight(1f))
-            StatCell("Utang belum dibayar", rupiah(utangLeft), Red, Modifier.weight(1f))
+            StatCell(
+                "Piutang belum diterima",
+                rupiah(piutangLeft),
+                Green,
+                Modifier.weight(1f),
+                onClick = if (piutangLeft > 0L) onOpenPiutang else null,
+                onClickLabel = "Buka daftar piutang"
+            )
+            StatCell(
+                "Utang belum dibayar",
+                rupiah(utangLeft),
+                Red,
+                Modifier.weight(1f),
+                onClick = if (utangLeft > 0L) onOpenUtang else null,
+                onClickLabel = "Buka daftar utang"
+            )
         }
         if (overdueCount > 0) {
             Spacer(Modifier.height(10.dp))

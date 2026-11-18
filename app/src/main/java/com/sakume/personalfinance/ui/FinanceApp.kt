@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -38,6 +39,7 @@ import com.sakume.personalfinance.ui.components.FormDialog
 import com.sakume.personalfinance.ui.components.MessageDialog
 import com.sakume.personalfinance.ui.isCashAccount
 import com.sakume.personalfinance.ui.screens.AnalyticsScreen
+import com.sakume.personalfinance.ui.screens.HistoryFilter
 import com.sakume.personalfinance.ui.screens.ManageAccountsScreen
 import com.sakume.personalfinance.ui.screens.BackupScreen
 import com.sakume.personalfinance.ui.screens.TransactionHistoryScreen
@@ -85,6 +87,10 @@ fun FinanceApp(
     var tab by remember { mutableStateOf("Home") }
     var subScreen by remember { mutableStateOf<String?>(null) }
     var historyAccountId by remember { mutableStateOf<String?>(null) }
+    var historyFilter by remember { mutableStateOf<HistoryFilter?>(null) }
+    // Diangkat ke sini: layar Analytics hilang dari composition saat histori terbuka
+    var analyticsPeriodIndex by rememberSaveable { mutableStateOf(0) }
+    val analyticsListState = rememberLazyListState()
     var billsProviderFilter by remember { mutableStateOf("Semua") }
     var debtFilter by remember { mutableStateOf("Semua") }
     var investSegment by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -108,6 +114,11 @@ fun FinanceApp(
             }
             onTabHandled()
         }
+    }
+
+    // Filter histori hanya hidup selama histori terbuka; kosongkan ketika kembali (tombol back, bottom bar, dsb.)
+    LaunchedEffect(subScreen) {
+        if (subScreen != "txHistory") historyFilter = null
     }
 
     BackHandler(enabled = subScreen != null || tab != "Home") {
@@ -234,8 +245,9 @@ fun FinanceApp(
                         TransactionHistoryScreen(
                             accounts = accounts,
                             tx = transactions,
-                            onBack = { subScreen = null; historyAccountId = null },
+                            onBack = { subScreen = null; historyAccountId = null; historyFilter = null },
                             accountFilter = historyAccountId,
+                            initialFilter = historyFilter,
                             onDeleteMany = { ids ->
                                 dialog = "deletetxmany:${ids.joinToString(",")}"
                             }
@@ -355,7 +367,20 @@ fun FinanceApp(
                             tx = transactions,
                             bills = bills,
                             debts = debts,
-                            onManageAccounts = { subScreen = "manageAccounts" }
+                            onManageAccounts = { subScreen = "manageAccounts" },
+                            onOpenHistory = { f ->
+                                historyAccountId = null
+                                historyFilter = f
+                                subScreen = "txHistory"
+                            },
+                            onOpenDebts = { filter ->
+                                debtFilter = filter
+                                subScreen = null
+                                tab = "More"
+                            },
+                            periodIndex = analyticsPeriodIndex,
+                            onPeriodIndexChange = { analyticsPeriodIndex = it },
+                            listState = analyticsListState
                         )
                         "Bills" -> BillsScreen(
                             bills = bills,

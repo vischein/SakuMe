@@ -1,5 +1,14 @@
 package com.sakume.personalfinance.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.runtime.key
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -122,6 +131,23 @@ fun HomeScreen(
     val bankAccounts = accounts.filterNot { isCash(it) }
     val displayTx = buildDisplayTransactions(tx, accounts)
 
+    val accountsSection = rememberSectionState(AppPrefs.HOME_SECTION_ACCOUNTS)
+    val billsSection = rememberSectionState(AppPrefs.HOME_SECTION_BILLS)
+    val transactionsSection = rememberSectionState(AppPrefs.HOME_SECTION_TRANSACTIONS)
+    val othersSection = rememberSectionState(AppPrefs.HOME_SECTION_OTHERS)
+
+    // Ringkasan satu baris untuk header saat section tertutup (nominal ikut hideBalance)
+    val accountsSummary = if (bankAccounts.isEmpty()) "Belum ada rekening"
+    else "${bankAccounts.size} rekening · ${money(bankAccounts.sumOf { it.balance })}"
+    val billsSummary = if (unpaidBills.isEmpty()) "Tidak ada tagihan aktif" else buildString {
+        append("${unpaidBills.size} tagihan · ${money(unpaidBills.sumOf { it.amount })}")
+        if (dueSoon.isNotEmpty()) append(" · ${dueSoon.size} jatuh tempo ≤ 3 hari")
+    }
+    val transactionsSummary = if (displayTx.isEmpty()) "Belum ada transaksi"
+    else "${displayTx.size} transaksi · terakhir ${formatDate(displayTx.first().dateMillis)}"
+    val othersSummary =
+        "Tabungan ${money(activeGoals.sumOf { it.value })} · Investasi ${money(activeInvest.sumOf { it.value })}"
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
@@ -209,138 +235,161 @@ fun HomeScreen(
             }
         }
 
-        item { SectionHeader("Rekening saya", "Lihat semua") { onAction("accounts") } }
-        if (bankAccounts.isEmpty()) {
-            item { EmptyHint("Belum ada rekening. Tambahkan untuk mulai mencatat.") }
-        } else {
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(bankAccounts) { a ->
-                        AccountMiniCard(a, isCash = false, hidden = hideBalance) { onAction("accountHistory:${a.id}") }
+        item(key = "section_accounts") {
+            HomeSection(
+                title = "Rekening saya",
+                action = "Lihat semua",
+                onAction = { onAction("accounts") },
+                state = accountsSection,
+                summary = accountsSummary
+            ) {
+                if (bankAccounts.isEmpty()) {
+                    EmptyHint("Belum ada rekening. Tambahkan untuk mulai mencatat.")
+                } else {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(bankAccounts) { a ->
+                            AccountMiniCard(a, isCash = false, hidden = hideBalance) { onAction("accountHistory:${a.id}") }
+                        }
                     }
                 }
             }
         }
 
-        item {
-            SectionHeader("Tagihan aktif", if (unpaidBills.isNotEmpty()) "Lihat semua" else null) {
-                onAction("bills")
-            }
-        }
-       if (dueSoon.isNotEmpty()) {
-            item {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = GoldSoft,
-                    modifier = Modifier.fillMaxWidth().clickable { onAction("bills") }
-                ) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text(
-                            "⚠ Tagihan jatuh tempo ≤ 3 hari",
-                            fontWeight = FontWeight.Bold,
-                            color = Gold,
-                            fontSize = 14.sp
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        dueSoon.take(4).forEach { b ->
-                            val daysLeft = ((b.dueDateMillis - now) / (24L * 60 * 60 * 1000)).toInt().coerceAtLeast(0)
-                            val dayText = when (daysLeft) {
-                                0 -> "hari ini"
-                                1 -> "besok"
-                                else -> "$daysLeft hari lagi"
-                            }
-                            Text(
-                                "${b.provider}, ${b.itemName} : ${rupiah(b.amount)} ( $dayText )",
-                                color = Color(0xFF8A4B2A),
-                                fontSize = 12.sp
-                            )
-                        }
-                        if (dueSoon.size > 4) {
-                            Text("${dueSoon.size - 4} lainnya", color = Color(0xFF8A4B2A), fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-        }
-        if (unpaidBills.isEmpty()) {
-            item { EmptyHint("Tidak ada tagihan aktif. Bagus!") }
-        } else {
-            items(unpaidBills.groupBy { it.provider }.toList().take(4)) { (provider, list) ->
-                val nearest = list.minOf { monthKey(it.dueDateMillis) }
-                val monthBills = list.filter { monthKey(it.dueDateMillis) == nearest }
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = CardBg,
-                    modifier = Modifier.fillMaxWidth().clickable { onAction("bills:$provider") }
-                ) {
-                    Row(
-                        Modifier.padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+        item(key = "section_bills") {
+            HomeSection(
+                title = "Tagihan aktif",
+                action = if (unpaidBills.isNotEmpty()) "Lihat semua" else null,
+                onAction = { onAction("bills") },
+                state = billsSection,
+                summary = billsSummary
+            ) {
+                if (dueSoon.isNotEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = GoldSoft,
+                        modifier = Modifier.fillMaxWidth().clickable { onAction("bills") }
                     ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(provider, fontWeight = FontWeight.SemiBold, color = Ink)
+                        Column(Modifier.padding(14.dp)) {
                             Text(
-                                "${monthBills.size} tagihan · ${monthLabel(monthBills.first().dueDateMillis)}",
-                                color = Muted,
-                                fontSize = 12.sp
+                                "⚠ Tagihan jatuh tempo ≤ 3 hari",
+                                fontWeight = FontWeight.Bold,
+                                color = Gold,
+                                fontSize = 14.sp
                             )
+                            Spacer(Modifier.height(6.dp))
+                            dueSoon.take(4).forEach { b ->
+                                val daysLeft = ((b.dueDateMillis - now) / (24L * 60 * 60 * 1000)).toInt().coerceAtLeast(0)
+                                val dayText = when (daysLeft) {
+                                    0 -> "hari ini"
+                                    1 -> "besok"
+                                    else -> "$daysLeft hari lagi"
+                                }
+                                Text(
+                                    "${b.provider}, ${b.itemName} : ${rupiah(b.amount)} ( $dayText )",
+                                    color = Color(0xFF8A4B2A),
+                                    fontSize = 12.sp
+                                )
+                            }
+                            if (dueSoon.size > 4) {
+                                Text("${dueSoon.size - 4} lainnya", color = Color(0xFF8A4B2A), fontSize = 12.sp)
+                            }
                         }
-                        Text(rupiah(monthBills.sumOf { it.amount }), fontWeight = FontWeight.Bold, color = Ink)
+                    }
+                }
+                if (unpaidBills.isEmpty()) {
+                    EmptyHint("Tidak ada tagihan aktif. Bagus!")
+                } else {
+                    unpaidBills.groupBy { it.provider }.toList().take(4).forEach { (provider, list) ->
+                        key(provider) {
+                            val nearest = list.minOf { monthKey(it.dueDateMillis) }
+                            val monthBills = list.filter { monthKey(it.dueDateMillis) == nearest }
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = CardBg,
+                                modifier = Modifier.fillMaxWidth().clickable { onAction("bills:$provider") }
+                            ) {
+                                Row(
+                                    Modifier.padding(16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(provider, fontWeight = FontWeight.SemiBold, color = Ink)
+                                        Text(
+                                            "${monthBills.size} tagihan · ${monthLabel(monthBills.first().dueDateMillis)}",
+                                            color = Muted,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    Text(rupiah(monthBills.sumOf { it.amount }), fontWeight = FontWeight.Bold, color = Ink)
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
-        item { SectionHeader("Transaksi terbaru", "Lihat semua", onSeeAllTx) }
-        if (displayTx.isEmpty()) {
-            item { EmptyHint("Transaksi terbaru akan muncul di sini.") }
-        } else {
-            items(displayTx.take(6), key = { it.id }) { t ->
-                TransactionRow(t, transactionAccountLabel(t, accounts))
+        item(key = "section_transactions") {
+            HomeSection(
+                title = "Transaksi terbaru",
+                action = "Lihat semua",
+                onAction = onSeeAllTx,
+                state = transactionsSection,
+                summary = transactionsSummary
+            ) {
+                if (displayTx.isEmpty()) {
+                    EmptyHint("Transaksi terbaru akan muncul di sini.")
+                } else {
+                    displayTx.take(6).forEach { t ->
+                        key(t.id) { TransactionRow(t, transactionAccountLabel(t, accounts)) }
+                    }
+                }
             }
         }
 
-        item { SectionHeader("Lainnya") }
-
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatTile(
-                    "Tabungan",
-                    rupiah(activeGoals.sumOf { it.value }),
-                    Icons.Filled.Savings,
-                    CardBg,
-                    Green,
-                    Modifier.weight(1f)
-                ) { onAction("invest:goals") }
-                StatTile(
-                    "Investasi",
-                    rupiah(activeInvest.sumOf { it.value }),
-                    Icons.Filled.TrendingUp,
-                    CardBg,
-                    Accent,
-                    Modifier.weight(1f)
-                ) { onAction("invest") }
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile(
-                    "Piutang",
-                    rupiah(debts.filter { it.type == "piutang" && !it.isPaid }.sumOf { it.remaining }),
-                    Icons.Filled.CallReceived,
-                    CardBg,
-                    Green,
-                    Modifier.weight(1f)
-                ) { onAction("more:piutang") }
-            StatTile(
-                "Utang",
-                rupiah(debts.filter { it.type == "utang" && !it.isPaid }.sumOf { it.remaining }),
-                Icons.Filled.CallMade,
-                CardBg,
-                Red,
-                Modifier.weight(1f)
-            ) { onAction("more:utang") }
+        item(key = "section_others") {
+            HomeSection(
+                title = "Lainnya",
+                state = othersSection,
+                summary = othersSummary
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatTile(
+                        "Tabungan",
+                        rupiah(activeGoals.sumOf { it.value }),
+                        Icons.Filled.Savings,
+                        CardBg,
+                        Green,
+                        Modifier.weight(1f)
+                    ) { onAction("invest:goals") }
+                    StatTile(
+                        "Investasi",
+                        rupiah(activeInvest.sumOf { it.value }),
+                        Icons.Filled.TrendingUp,
+                        CardBg,
+                        Accent,
+                        Modifier.weight(1f)
+                    ) { onAction("invest") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatTile(
+                        "Piutang",
+                        rupiah(debts.filter { it.type == "piutang" && !it.isPaid }.sumOf { it.remaining }),
+                        Icons.Filled.CallReceived,
+                        CardBg,
+                        Green,
+                        Modifier.weight(1f)
+                    ) { onAction("more:piutang") }
+                    StatTile(
+                        "Utang",
+                        rupiah(debts.filter { it.type == "utang" && !it.isPaid }.sumOf { it.remaining }),
+                        Icons.Filled.CallMade,
+                        CardBg,
+                        Red,
+                        Modifier.weight(1f)
+                    ) { onAction("more:utang") }
+                }
             }
         }
     }
@@ -366,5 +415,65 @@ private fun AccountMiniCard(a: AccountEntity, isCash: Boolean = false, hidden: B
         Text(a.name, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(6.dp))
         Text(if (hidden) HIDDEN_MONEY else rupiah(a.balance), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+    }
+}
+
+/** Status buka/tutup satu section Home; tersimpan di AppPrefs (default terbuka). */
+private class SectionState(initial: Boolean, private val persist: (Boolean) -> Unit) {
+    var expanded by mutableStateOf(initial)
+        private set
+
+    fun toggle() {
+        expanded = !expanded
+        persist(expanded)
+    }
+}
+
+@Composable
+private fun rememberSectionState(key: String): SectionState {
+    val context = LocalContext.current
+    return remember(key) {
+        SectionState(AppPrefs.homeSectionExpanded(context, key)) {
+            AppPrefs.setHomeSectionExpanded(context, key, it)
+        }
+    }
+}
+
+/**
+ * Satu section = SATU item LazyColumn: header + body yang dianimasikan.
+ * Jarak 12dp header-body ada di DALAM body (ikut menyusut), sehingga saat tertutup tidak ada celah kosong.
+ */
+@Composable
+private fun HomeSection(
+    title: String,
+    state: SectionState,
+    summary: String?,
+    action: String? = null,
+    onAction: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(Modifier.fillMaxWidth()) {
+        SectionHeader(
+            title = title,
+            action = action,
+            onAction = onAction,
+            collapsible = true,
+            expanded = state.expanded,
+            summary = summary,
+            onToggle = { state.toggle() }
+        )
+        AnimatedVisibility(
+            visible = state.expanded,
+            enter = expandVertically(tween(300, easing = FastOutSlowInEasing)) +
+                fadeIn(tween(300, easing = FastOutSlowInEasing)),
+            exit = shrinkVertically(tween(300, easing = FastOutSlowInEasing)) +
+                fadeOut(tween(200))
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(top = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = content
+            )
+        }
     }
 }
