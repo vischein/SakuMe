@@ -113,6 +113,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 
+internal const val HIDDEN_AMOUNT = "Rp******"
+
 @Composable
 fun EmptyHint(text: String) {
     Text(
@@ -287,7 +289,8 @@ fun TransactionRow(
     modifier: Modifier = Modifier,
     grouped: Boolean = false,
     showDate: Boolean = true,
-    onLongPress: (() -> Unit)? = null
+    onLongPress: (() -> Unit)? = null,
+    hideAmount: Boolean = false
 ) {
     val isTransfer = t.type == "transfer_in" || t.type == "transfer_out"
     val isIn = t.type == "income" || t.type == "transfer_in"
@@ -402,7 +405,7 @@ fun TransactionRow(
         }
         Spacer(Modifier.width(8.dp))
         Text(
-            "$sign${rupiah(t.amount)}",
+            "$sign${if (hideAmount) HIDDEN_AMOUNT else rupiah(t.amount)}",
             fontWeight = FontWeight.Bold,
             color = tint,
             fontSize = 14.sp,

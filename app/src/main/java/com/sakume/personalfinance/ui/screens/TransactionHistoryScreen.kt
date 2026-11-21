@@ -18,7 +18,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,7 +34,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -92,7 +90,6 @@ import com.sakume.personalfinance.data.TransactionEntity
 import com.sakume.personalfinance.ui.buildDisplayTransactions
 import com.sakume.personalfinance.ui.components.ActionChip
 import com.sakume.personalfinance.ui.components.SegmentedChips
-import com.sakume.personalfinance.ui.components.SelectableChip
 import com.sakume.personalfinance.ui.components.TransactionRow
 import com.sakume.personalfinance.ui.dayHeaderLabel
 import com.sakume.personalfinance.ui.displayCategory
@@ -446,18 +443,13 @@ fun TransactionHistoryScreen(
                                 }
                             }
                         )
-                        Row(
-                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            HistoryType.entries.forEach { type ->
-                                SelectableChip(
-                                    label = type.label,
-                                    selected = typeFilter == type,
-                                    onClick = { typeFilter = type }
-                                )
-                            }
-                        }
+                        SegmentedChips(
+                            options = HistoryType.entries.map { it.label },
+                            selectedIndex = typeFilter.ordinal,
+                            minSegmentWidth = 72.dp,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                            onSelect = { typeFilter = HistoryType.entries[it] }
+                        )
                     }
                 }
 

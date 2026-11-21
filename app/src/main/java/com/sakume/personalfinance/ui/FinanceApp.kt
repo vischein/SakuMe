@@ -118,7 +118,10 @@ fun FinanceApp(
 
     // Filter histori hanya hidup selama histori terbuka; kosongkan ketika kembali (tombol back, bottom bar, dsb.)
     LaunchedEffect(subScreen) {
-        if (subScreen != "txHistory") historyFilter = null
+        if (subScreen != "txHistory") {
+            historyFilter = null
+            historyAccountId = null
+        }
     }
 
     BackHandler(enabled = subScreen != null || tab != "Home") {
@@ -319,6 +322,16 @@ fun FinanceApp(
                             debts = debts,
                             onAction = { action ->
                                 when {
+                                    action == "history:income" || action == "history:expense" -> {
+                                        val income = action == "history:income"
+                                        historyAccountId = null
+                                        historyFilter = HistoryFilter(
+                                            type = if (income) "income" else "expense",
+                                            startMillis = startOfMonthMillis(),
+                                            title = if (income) "Dana masuk bulan ini" else "Dana keluar bulan ini"
+                                        )
+                                        subScreen = "txHistory"
+                                    }
                                     action == "accounts" -> subScreen = "manageAccounts"
                                     action.startsWith("accountHistory:") -> {
                                         historyAccountId = action.removePrefix("accountHistory:")
@@ -360,7 +373,12 @@ fun FinanceApp(
                                     else -> dialog = action
                                 }
                             },
-                            onSeeAllTx = { subScreen = "txHistory" }
+                            onSeeAllTx = {
+                                // Histori universal: semua rekening, tanpa filter
+                                historyAccountId = null
+                                historyFilter = null
+                                subScreen = "txHistory"
+                            }
                         )
                         "Analisis" -> AnalyticsScreen(
                             accounts = accounts,
