@@ -1,12 +1,16 @@
 package com.sakume.personalfinance.ui.screens
 
+import com.sakume.personalfinance.ui.components.FilterSection
+import com.sakume.personalfinance.ui.components.UnifiedFilterControl
 import android.app.DatePickerDialog
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -18,12 +22,15 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +41,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -48,6 +56,8 @@ import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.SouthWest
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -66,15 +76,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -89,7 +100,6 @@ import com.sakume.personalfinance.data.AccountEntity
 import com.sakume.personalfinance.data.TransactionEntity
 import com.sakume.personalfinance.ui.buildDisplayTransactions
 import com.sakume.personalfinance.ui.components.ActionChip
-import com.sakume.personalfinance.ui.components.SegmentedChips
 import com.sakume.personalfinance.ui.components.TransactionRow
 import com.sakume.personalfinance.ui.dayHeaderLabel
 import com.sakume.personalfinance.ui.displayCategory
@@ -108,7 +118,6 @@ import com.sakume.personalfinance.ui.theme.Red
 import com.sakume.personalfinance.ui.theme.RedSoft
 import com.sakume.personalfinance.ui.transactionAccountLabel
 import java.util.Calendar
-
 
 data class HistoryFilter(
     val type: String? = null,
@@ -132,13 +141,19 @@ private fun HistoryFilter.matches(t: TransactionEntity): Boolean {
     return true
 }
 
-private enum class HistoryPeriod { ALL, TODAY, WEEK, MONTH, DAY }
+private enum class HistoryPeriod(val label: String) {
+    ALL("Semua"),
+    TODAY("Hari ini"),
+    WEEK("Minggu ini"),
+    MONTH("Bulan ini"),
+    DAY("Tanggal")
+}
 
 private enum class HistoryType(val label: String) {
     ALL("Semua"),
     IN("Masuk"),
     OUT("Keluar"),
-    INTERNAL("Transfer/Tunai")
+    INTERNAL("Transfer")
 }
 
 private class HistoryEntry(
@@ -357,7 +372,8 @@ fun TransactionHistoryScreen(
         } else {
             "Histori transaksi"
         }
-    val canReset = period != HistoryPeriod.ALL || typeFilter != HistoryType.ALL || query.isNotBlank() || f != null
+    val hasActiveControls = period != HistoryPeriod.ALL || typeFilter != HistoryType.ALL || f != null
+    val canReset = hasActiveControls || query.isNotBlank()
     val bottomPad by animateDpAsState(if (selectionMode) 104.dp else 24.dp, tween(220), label = "historyBottomPad")
     val dividerStart by animateDpAsState(if (selectionMode) 96.dp else 64.dp, tween(200), label = "historyDividerStart")
 
@@ -386,7 +402,7 @@ fun TransactionHistoryScreen(
                     query = query,
                     onQueryChange = { query = it },
                     onSubmit = { focusManager.clearFocus(); keyboard?.hide() },
-                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 6.dp)
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp)
                 )
             }
 
@@ -396,37 +412,56 @@ fun TransactionHistoryScreen(
                 contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = bottomPad)
             ) {
                 item(key = "summary", contentType = "summary") {
-                    SummaryCard(totals.income, totals.expense, Modifier.padding(bottom = 12.dp))
+                    SummaryCard(
+                        income = totals.income,
+                        expense = totals.expense,
+                        modifier = Modifier.padding(bottom = 14.dp)
+                    )
                 }
 
                 item(key = "controls", contentType = "controls") {
-                    Column(Modifier.fillMaxWidth().animateContentSize().padding(bottom = 4.dp)) {
-                        if (f != null) {
-                            ActiveFilterChip(label = f.title ?: "Filter aktif", onClear = { activeFilter = null })
-                        }
-                        val dayLabel =
-                            if (period == HistoryPeriod.DAY && dayMillis != null) formatDate(dayMillis!!) else "Pilih tanggal"
-                        SegmentedChips(
-                            options = listOf("Semua", "Hari ini", "Minggu ini", "Bulan ini", dayLabel),
-                            selectedIndex = period.ordinal,
-                            minSegmentWidth = 72.dp,
-                            modifier = Modifier.padding(vertical = 6.dp),
-                            onSelect = {
-                                when (it) {
-                                    0 -> period = HistoryPeriod.ALL
-                                    1 -> period = HistoryPeriod.TODAY
-                                    2 -> period = HistoryPeriod.WEEK
-                                    3 -> period = HistoryPeriod.MONTH
-                                    else -> openDatePicker()
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .animateContentSize()
+                            .padding(bottom = 6.dp)
+                    ) {
+                        UnifiedFilterControl(
+                            title = f?.title ?: when {
+                                period == HistoryPeriod.ALL && typeFilter == HistoryType.ALL -> "Semua transaksi"
+                                typeFilter != HistoryType.ALL -> typeFilter.label
+                                else -> period.label
+                            },
+                            summary = "${accountName ?: "Semua rekening"} · ${if (period == HistoryPeriod.DAY && dayMillis != null) formatDate(dayMillis!!) else period.label} · ${typeFilter.label}",
+                            sections = listOf(
+                                FilterSection(
+                                    title = "Periode",
+                                    options = listOf("Semua waktu", "Hari ini", "Minggu ini", "Bulan ini", "Pilih tanggal"),
+                                    selectedIndex = when (period) {
+                                        HistoryPeriod.ALL -> 0
+                                        HistoryPeriod.TODAY -> 1
+                                        HistoryPeriod.WEEK -> 2
+                                        HistoryPeriod.MONTH -> 3
+                                        HistoryPeriod.DAY -> 4
+                                    }
+                                ),
+                                FilterSection(
+                                    title = "Jenis transaksi",
+                                    options = listOf("Semua", "Masuk", "Keluar", "Transfer / Tunai"),
+                                    selectedIndex = typeFilter.ordinal
+                                )
+                            ),
+                            onApply = { selected ->
+                                when (selected[0]) {
+                                    0 -> { period = HistoryPeriod.ALL; dayMillis = null }
+                                    1 -> { period = HistoryPeriod.TODAY; dayMillis = null }
+                                    2 -> { period = HistoryPeriod.WEEK; dayMillis = null }
+                                    3 -> { period = HistoryPeriod.MONTH; dayMillis = null }
+                                    4 -> openDatePicker()
                                 }
-                            }
-                        )
-                        SegmentedChips(
-                            options = HistoryType.entries.map { it.label },
-                            selectedIndex = typeFilter.ordinal,
-                            minSegmentWidth = 72.dp,
-                            modifier = Modifier.padding(bottom = 6.dp),
-                            onSelect = { typeFilter = HistoryType.entries[it] }
+                                typeFilter = HistoryType.entries[selected[1].coerceIn(0, HistoryType.entries.lastIndex)]
+                            },
+                            onReset = ::resetFilters
                         )
                     }
                 }
@@ -502,7 +537,12 @@ fun TransactionHistoryScreen(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 12.dp)
-                    .shadow(8.dp, RoundedCornerShape(20.dp), ambientColor = Ink.copy(alpha = 0.12f), spotColor = Ink.copy(alpha = 0.18f))
+                    .shadow(
+                        8.dp,
+                        RoundedCornerShape(20.dp),
+                        ambientColor = Ink.copy(alpha = 0.12f),
+                        spotColor = Ink.copy(alpha = 0.18f)
+                    )
                     .clip(RoundedCornerShape(20.dp))
                     .background(CardBg)
                     .padding(start = 18.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
@@ -556,7 +596,10 @@ private fun HistoryHeader(
 ) {
     Crossfade(targetState = selectionMode, animationSpec = tween(180), label = "historyHeader") { selecting ->
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(start = 8.dp, end = 20.dp),
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 60.dp)
+                .padding(start = 8.dp, end = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = if (selecting) onExitSelection else onBack) {
@@ -590,28 +633,41 @@ private fun HistoryHeader(
                     onClick = onToggleAll
                 )
             } else {
-                IconButton(onClick = onToggleSearch) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Box(
-                        Modifier
+                        modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(if (searchOpen) Ink.copy(alpha = 0.08f) else Color.Transparent),
+                            .background(if (searchOpen) Ink else CardBg)
+                            .border(
+                                width = 1.dp,
+                                color = if (searchOpen) Ink else Ink.copy(alpha = 0.08f),
+                                shape = CircleShape
+                            )
+                            .clickable(
+                                onClickLabel = if (searchOpen) "Tutup pencarian" else "Cari transaksi",
+                                role = Role.Button,
+                                onClick = onToggleSearch
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Filled.Search,
+                            imageVector = if (searchOpen) Icons.Filled.Close else Icons.Filled.Search,
                             contentDescription = if (searchOpen) "Tutup pencarian" else "Cari transaksi",
-                            tint = Ink,
-                            modifier = Modifier.size(22.dp)
+                            tint = if (searchOpen) Color.White else Ink,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
+                    ActionChip(
+                        label = "Pilih",
+                        icon = Icons.Outlined.CheckCircle,
+                        contentDescription = "Pilih transaksi",
+                        onClick = onEnterSelection
+                    )
                 }
-                ActionChip(
-                    label = "Pilih",
-                    icon = Icons.Outlined.CheckCircle,
-                    contentDescription = "Pilih transaksi",
-                    onClick = onEnterSelection
-                )
             }
         }
     }
@@ -672,67 +728,179 @@ private fun SearchField(
 @Composable
 private fun SummaryCard(income: Long, expense: Long, modifier: Modifier = Modifier) {
     val net = income - expense
+    val totalFlow = (income + expense).coerceAtLeast(1L)
+    val targetRatio = if (income == 0L && expense == 0L) 0.5f else income.toFloat() / totalFlow.toFloat()
+    val animatedRatio by animateFloatAsState(
+        targetValue = targetRatio.coerceIn(0.04f, 0.96f),
+        animationSpec = tween(320, easing = FastOutSlowInEasing),
+        label = "flowRatio"
+    )
+
     Column(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(CardBg)
-            .padding(12.dp)
+            .border(1.dp, Ink.copy(alpha = 0.06f), RoundedCornerShape(20.dp))
+            .padding(16.dp)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FlowTile("Masuk", income, Green, GreenSoft, Icons.Filled.SouthWest, Modifier.weight(1f))
-            FlowTile("Keluar", expense, Red, RedSoft, Icons.Filled.NorthEast, Modifier.weight(1f))
-        }
+        
         Row(
-            Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 12.dp, bottom = 2.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Netto", color = Muted, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Crossfade(targetState = net, animationSpec = tween(220), label = "summaryNet") { v ->
+            Column(Modifier.weight(1f)) {
                 Text(
-                    signedRupiah(v),
-                    color = netColor(v),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
+                    text = "Arus kas bersih (Netto)",
+                    color = Muted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
                 )
+                Spacer(Modifier.height(2.dp))
+                Crossfade(targetState = net, animationSpec = tween(220), label = "summaryNet") { v ->
+                    Text(
+                        text = signedRupiah(v),
+                        color = netColor(v),
+                        fontSize = 21.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        style = TextStyle(fontFeatureSettings = "tnum"),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
+
+            if (income > 0L || expense > 0L) {
+                val (badgeBg, badgeText, badgeLabel) = when {
+                    net > 0L -> Triple(GreenSoft, Green, "Surplus")
+                    net < 0L -> Triple(RedSoft, Red, "Defisit")
+                    else -> Triple(Ink.copy(alpha = 0.07f), Muted, "Seimbang")
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(badgeBg)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = badgeLabel,
+                        color = badgeText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        if (income > 0L || expense > 0L) {
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(5.dp)
+                    .clip(CircleShape)
+                    .background(RedSoft),
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                if (income > 0L) {
+                    Box(
+                        modifier = Modifier
+                            .weight(animatedRatio)
+                            .fillMaxHeight()
+                            .clip(CircleShape)
+                            .background(Green)
+                    )
+                }
+                if (expense > 0L) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f - animatedRatio)
+                            .fillMaxHeight()
+                            .clip(CircleShape)
+                            .background(Red)
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        HorizontalDivider(thickness = 0.5.dp, color = Ink.copy(alpha = 0.07f))
+        Spacer(Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FlowColumnItem(
+                label = "Masuk",
+                value = income,
+                tint = Green,
+                soft = GreenSoft,
+                icon = Icons.Filled.SouthWest,
+                modifier = Modifier.weight(1f)
+            )
+
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(Ink.copy(alpha = 0.08f))
+            )
+
+            FlowColumnItem(
+                label = "Keluar",
+                value = expense,
+                tint = Red,
+                soft = RedSoft,
+                icon = Icons.Filled.NorthEast,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
 
 @Composable
-private fun FlowTile(
+private fun FlowColumnItem(
     label: String,
     value: Long,
     tint: Color,
     soft: Color,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     modifier: Modifier = Modifier
 ) {
     Row(
-        modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(soft)
-            .padding(horizontal = 10.dp, vertical = 10.dp),
+        modifier = modifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            Modifier.size(28.dp).background(tint.copy(alpha = 0.18f), CircleShape),
+            modifier = Modifier
+                .size(30.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(soft),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, null, tint = tint, modifier = Modifier.size(15.dp))
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(15.dp))
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(label, color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+            Text(
+                text = label,
+                color = Muted,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1
+            )
             Crossfade(targetState = value, animationSpec = tween(220), label = "flow$label") { v ->
                 Text(
-                    rupiah(v),
+                    text = rupiah(v),
                     color = Ink,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
+                    style = TextStyle(fontFeatureSettings = "tnum"),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

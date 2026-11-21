@@ -192,7 +192,7 @@ private fun buildSpendSeries(expenses: List<TransactionEntity>, period: PeriodRa
         val idx = starts.indexOfLast { it <= t.dateMillis }.coerceAtLeast(0)
         sums[idx] += t.amount
     }
-    // Bucket i = [start_i, start_{i+1}); bucket terakhir sampai akhir periode (sama dengan cara expense dihitung di atas)
+    
     return SpendSeries(
         starts.mapIndexed { i, start -> SpendBucket(start, sums[i], starts.getOrNull(i + 1) ?: period.end) },
         unit
@@ -244,7 +244,7 @@ fun AnalyticsScreen(
     listState: LazyListState = rememberLazyListState()
 ) {
     val periods = remember { periodRanges() }
-    // periodIndex bisa diangkat (hoisted) ke FinanceApp; tanpa itu pakai state lokal seperti dulu
+    
     var localPeriodIndex by remember { mutableStateOf(0) }
     val selectedPeriod = (periodIndex ?: localPeriodIndex).coerceIn(0, periods.lastIndex)
     val period = periods[selectedPeriod]
@@ -769,7 +769,7 @@ private fun SpendTrendCard(
                         {
                             flashIndex = i
                             scope.launch {
-                                delay(160) // beri waktu highlight terlihat sebelum pindah layar
+                                delay(160) 
                                 onBarClick(b)
                             }
                         }

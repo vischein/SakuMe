@@ -88,7 +88,7 @@ fun FinanceApp(
     var subScreen by remember { mutableStateOf<String?>(null) }
     var historyAccountId by remember { mutableStateOf<String?>(null) }
     var historyFilter by remember { mutableStateOf<HistoryFilter?>(null) }
-    // Diangkat ke sini: layar Analytics hilang dari composition saat histori terbuka
+    
     var analyticsPeriodIndex by rememberSaveable { mutableStateOf(0) }
     val analyticsListState = rememberLazyListState()
     var billsProviderFilter by remember { mutableStateOf("Semua") }
@@ -373,7 +373,7 @@ fun FinanceApp(
                                 }
                             },
                             onSeeAllTx = {
-                                // Histori universal: semua rekening, tanpa filter
+                                
                                 historyAccountId = null
                                 historyFilter = null
                                 subScreen = "txHistory"

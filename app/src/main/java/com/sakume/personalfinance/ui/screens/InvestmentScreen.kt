@@ -263,8 +263,6 @@ fun InvestmentScreen(
     }
 }
 
-// ---------------------------------------------------------------- hero cards
-
 @Composable
 private fun GoalsHero(goals: List<InvestmentEntity>) {
     val saved = goals.sumOf { it.value }
@@ -365,8 +363,6 @@ private fun InvestHero(platforms: List<InvestmentEntity>, holdings: List<Investm
         }
     }
 }
-
-// ---------------------------------------------------------------- goal card
 
 private data class CategoryStyle(val icon: ImageVector, val tint: Color, val soft: Color)
 
@@ -543,8 +539,6 @@ private fun GoalCard(
     }
 }
 
-// ---------------------------------------------------------------- platform card
-
 @Composable
 private fun PlatformCard(
     platform: InvestmentEntity,
@@ -686,8 +680,6 @@ private fun PlatformCard(
         }
     }
 }
-
-// ---------------------------------------------------------------- shared bits
 
 @Composable
 private fun ScheduleRow(

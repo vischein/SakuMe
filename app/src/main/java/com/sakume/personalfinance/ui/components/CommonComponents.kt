@@ -416,7 +416,6 @@ fun QuickAction(
     }
 }
 
-
 private val ChipTrack = CancelBg
 private val ChipHairline = Ink.copy(alpha = 0.0f)
 private val ChipPill = RoundedCornerShape(50)
@@ -638,7 +637,7 @@ private fun SegmentItem(
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                // lebar minimum = lebar SemiBold => kotak teks konstan, glyph tetap di tengah
+                
                 modifier = Modifier.widthIn(min = textWidth).weight(1f, fill = false)
             )
             if (badge != null) {
@@ -691,7 +690,7 @@ fun SelectableChip(
             Spacer(Modifier.width(SegmentGap))
         }
         Box(contentAlignment = Alignment.Center) {
-            // Teks tak terlihat berbobot SemiBold menjaga lebar konstan
+            
             Text(
                 label,
                 fontSize = 13.sp,

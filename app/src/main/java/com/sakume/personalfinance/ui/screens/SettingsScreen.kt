@@ -146,8 +146,6 @@ fun SettingsScreen(
         }
     }
 
-    // Satu PinEntryDialog dipakai untuk semua langkah, jadi window dialog (dan status bar /
-    // navigation bar-nya) tidak dibuat ulang dan berkedip di tiap langkah.
     val pinStepActive = pinFlow in setOf("setup1", "setup2", "verify_disable", "verify_change") ||
         (pinFlow == "choose_length" && lockEnabled)
     if (pinStepActive) {

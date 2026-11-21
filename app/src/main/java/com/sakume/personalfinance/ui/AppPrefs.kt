@@ -62,7 +62,6 @@ object AppPrefs {
         prefs(context).edit().putBoolean(KEY_HIDE_HOME_BALANCE, hidden).apply()
     }
 
-    /** Status buka/tutup section Home. Default: terbuka. */
     fun homeSectionExpanded(context: Context, section: String): Boolean =
         prefs(context).getBoolean(KEY_HOME_SECTION_PREFIX + section, true)
 

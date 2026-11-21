@@ -459,7 +459,6 @@ fun HomeScreen(
     }
 }
 
-
 @Composable
 private fun Modifier.pressable(
     description: String? = null,
@@ -491,7 +490,6 @@ private fun Modifier.pressable(
             else Modifier
         )
 }
-
 
 private fun Modifier.card(): Modifier {
     val shape = RoundedCornerShape(CardRadius)
@@ -571,7 +569,6 @@ private fun Context.findActivity(): Activity? {
     }
     return null
 }
-
 
 @Composable
 private fun TopBlock(
@@ -826,7 +823,6 @@ private fun CollapsedBar(
     }
 }
 
-
 @Composable
 private fun AttentionBanner(
     dueSoon: List<BillEntity>,
@@ -885,7 +881,6 @@ private fun AttentionBanner(
         Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = Ink, modifier = Modifier.size(22.dp))
     }
 }
-
 
 @Composable
 private fun AccountStrip(
@@ -968,7 +963,6 @@ private fun AccountChip(
         MoneyText(hidden, a.balance, baseSize = 20f, minSize = 12f, color = Ink)
     }
 }
-
 
 @Composable
 private fun BillsCard(
@@ -1099,7 +1093,6 @@ private fun BillRow(g: BillGroup, hidden: Boolean, onClick: () -> Unit) {
     }
 }
 
-
 @Composable
 private fun RecentTransactionsCard(items: List<RecentTx>, hidden: Boolean) {
     Column(Modifier.fillMaxWidth().card()) {
@@ -1122,7 +1115,6 @@ private fun RecentTransactionsCard(items: List<RecentTx>, hidden: Boolean) {
         }
     }
 }
-
 
 @Composable
 private fun MiniTile(
@@ -1183,7 +1175,6 @@ private fun MiniTile(
         }
     }
 }
-
 
 private class SectionState(initial: Boolean, private val persist: (Boolean) -> Unit) {
     var expanded by mutableStateOf(initial)
