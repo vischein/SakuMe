@@ -432,7 +432,7 @@ fun TransactionHistoryScreen(
                                 typeFilter != HistoryType.ALL -> typeFilter.label
                                 else -> period.label
                             },
-                            summary = "${accountName ?: "Semua rekening"} · ${if (period == HistoryPeriod.DAY && dayMillis != null) formatDate(dayMillis!!) else period.label} · ${typeFilter.label}",
+                            summary = "${accountName ?: "Semua rekening"}, ${if (period == HistoryPeriod.DAY && dayMillis != null) formatDate(dayMillis!!) else period.label}, ${typeFilter.label}",
                             sections = listOf(
                                 FilterSection(
                                     title = "Periode",
@@ -599,16 +599,9 @@ private fun HistoryHeader(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 60.dp)
-                .padding(start = 8.dp, end = 20.dp),
+                .padding(start = 20.dp, end = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = if (selecting) onExitSelection else onBack) {
-                Icon(
-                    if (selecting) Icons.Filled.Close else Icons.Filled.ArrowBack,
-                    contentDescription = if (selecting) "Keluar dari mode pilih" else "Kembali",
-                    tint = Ink
-                )
-            }
             Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
                 Text(
                     if (selecting) "$selectedCount dipilih" else title,

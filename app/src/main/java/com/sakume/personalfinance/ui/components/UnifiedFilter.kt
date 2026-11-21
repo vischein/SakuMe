@@ -107,7 +107,7 @@ fun UnifiedFilterControl(
                 )
             }
         ) {
-            Column(Modifier.fillMaxWidth().fillMaxHeight(0.82f).verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Filter", color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -193,7 +193,7 @@ fun UnifiedFilterControl(
                             }
                         }
                         Box(
-                            modifier = Modifier.weight(1.5f).height(46.dp)
+                            modifier = Modifier.weight(1f).height(46.dp)
                                 .clip(RoundedCornerShape(13.dp))
                                 .background(Ink)
                                 .clickable {
