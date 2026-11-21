@@ -92,7 +92,6 @@ fun startOfMonthMillis(): Long =
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
 
-// ── Helper tanggal/jam untuk histori transaksi ───────────────────────────────
 
 private val ID_LOCALE = Locale("id", "ID")
 

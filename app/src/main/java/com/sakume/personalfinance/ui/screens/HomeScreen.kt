@@ -459,7 +459,6 @@ fun HomeScreen(
     }
 }
 
-// ───────────────────────────── Helpers ─────────────────────────────
 
 @Composable
 private fun Modifier.pressable(
@@ -493,7 +492,7 @@ private fun Modifier.pressable(
         )
 }
 
-/** Kartu putih dengan garis tipis — dasar semua kartu di Home. */
+
 private fun Modifier.card(): Modifier {
     val shape = RoundedCornerShape(CardRadius)
     return this
@@ -573,7 +572,6 @@ private fun Context.findActivity(): Activity? {
     return null
 }
 
-// ───────────────────────────── Hero ─────────────────────────────
 
 @Composable
 private fun TopBlock(
@@ -610,7 +608,6 @@ private fun TopBlock(
         Spacer(Modifier.height(16.dp))
         Text("Total saldo", color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp, maxLines = 1)
         Spacer(Modifier.height(2.dp))
-        // Ketuk nominal total saldo = sembunyikan / tampilkan semua nominal
         Box(
             Modifier
                 .fillMaxWidth()
@@ -660,6 +657,7 @@ private fun TopBlock(
                 label = "Masuk",
                 value = moneyText(hidden, moneyIn),
                 icon = Icons.Filled.SouthWest,
+                iconTint = Green,
                 modifier = Modifier.weight(1f),
                 onClick = { onAction("history:income") }
             )
@@ -668,6 +666,7 @@ private fun TopBlock(
                 label = "Keluar",
                 value = moneyText(hidden, moneyOut),
                 icon = Icons.Filled.NorthEast,
+                iconTint = Red,
                 modifier = Modifier.weight(1f),
                 onClick = { onAction("history:expense") }
             )
@@ -718,6 +717,7 @@ private fun StatCell(
     label: String,
     value: String,
     icon: ImageVector,
+    iconTint: Color = Color.White.copy(alpha = 0.65f),
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null
 ) {
@@ -730,7 +730,7 @@ private fun StatCell(
     } else Modifier
     Column(modifier.then(tap).padding(horizontal = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = Color.White.copy(alpha = 0.65f), modifier = Modifier.size(14.dp))
+            Icon(icon, null, tint = iconTint, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(5.dp))
             Text(
                 label,
@@ -743,7 +743,7 @@ private fun StatCell(
                 Icon(
                     Icons.Filled.ChevronRight,
                     null,
-                    tint = Color.White.copy(alpha = 0.45f),
+                    tint = Color.White.copy(alpha = 0f),
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -826,7 +826,6 @@ private fun CollapsedBar(
     }
 }
 
-// ───────────────────────────── Banner ─────────────────────────────
 
 @Composable
 private fun AttentionBanner(
@@ -887,7 +886,6 @@ private fun AttentionBanner(
     }
 }
 
-// ───────────────────────────── Rekening ─────────────────────────────
 
 @Composable
 private fun AccountStrip(
@@ -971,7 +969,6 @@ private fun AccountChip(
     }
 }
 
-// ───────────────────────────── Tagihan ─────────────────────────────
 
 @Composable
 private fun BillsCard(
@@ -1102,9 +1099,7 @@ private fun BillRow(g: BillGroup, hidden: Boolean, onClick: () -> Unit) {
     }
 }
 
-// ───────────────────────────── Transaksi ─────────────────────────────
 
-/** Memakai TransactionRow yang sama dengan halaman riwayat (warna & ikon identik). */
 @Composable
 private fun RecentTransactionsCard(items: List<RecentTx>, hidden: Boolean) {
     Column(Modifier.fillMaxWidth().card()) {
@@ -1128,7 +1123,6 @@ private fun RecentTransactionsCard(items: List<RecentTx>, hidden: Boolean) {
     }
 }
 
-// ───────────────────────────── Lainnya ─────────────────────────────
 
 @Composable
 private fun MiniTile(
@@ -1190,7 +1184,6 @@ private fun MiniTile(
     }
 }
 
-// ───────────────────────────── Section ─────────────────────────────
 
 private class SectionState(initial: Boolean, private val persist: (Boolean) -> Unit) {
     var expanded by mutableStateOf(initial)

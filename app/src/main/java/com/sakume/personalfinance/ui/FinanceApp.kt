@@ -116,7 +116,6 @@ fun FinanceApp(
         }
     }
 
-    // Filter histori hanya hidup selama histori terbuka; kosongkan ketika kembali (tombol back, bottom bar, dsb.)
     LaunchedEffect(subScreen) {
         if (subScreen != "txHistory") {
             historyFilter = null

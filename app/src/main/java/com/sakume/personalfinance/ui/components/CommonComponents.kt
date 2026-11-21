@@ -59,6 +59,7 @@ import com.sakume.personalfinance.ui.displayCategory
 import com.sakume.personalfinance.ui.formatDate
 import com.sakume.personalfinance.ui.rupiah
 import com.sakume.personalfinance.ui.theme.CardBg
+import com.sakume.personalfinance.ui.theme.CancelBg
 import com.sakume.personalfinance.ui.theme.PanelSoft
 import com.sakume.personalfinance.ui.theme.Green
 import com.sakume.personalfinance.ui.theme.GreenSoft
@@ -129,15 +130,6 @@ fun EmptyHint(text: String) {
     )
 }
 
-/**
- * Header section. Tanpa parameter opsional tampilannya sama seperti sebelumnya.
- *
- * Mode collapse: set [collapsible] = true dan beri [onToggle]. Seluruh baris menjadi tombol toggle
- * (chevron berputar halus); [action] ("Lihat semua") tetap tombol terpisah. Saat [expanded] = false,
- * [summary] (bila ada) tampil sebagai satu baris kecil di bawah judul.
- *
- * Catatan: lambda trailing mengikat ke parameter TERAKHIR ([onToggle]); untuk [onAction] pakai named argument.
- */
 @Composable
 fun SectionHeader(
     title: String,
@@ -249,7 +241,6 @@ fun StatTile(
     }
 }
 
-/** Ikon per kategori (hasil normalizeCategory). Null = pakai fallback panah masuk/keluar. */
 private fun categoryIcon(normalized: String): ImageVector? = when (normalized) {
     "Makan & minum" -> Icons.Filled.Restaurant
     "Transport" -> Icons.Filled.DirectionsCar
@@ -269,15 +260,6 @@ private fun categoryIcon(normalized: String): ImageVector? = when (normalized) {
     else -> null
 }
 
-/**
- * Baris transaksi.
- *
- * Default (dipakai HomeScreen): kartu putih mandiri, subtitle "rekening · tanggal · jam".
- * Untuk histori: [grouped] = true (tanpa kartu sendiri; induk yang memberi latar/sudut/pemisah)
- * dan [showDate] = false (tanggal sudah ada di header grup).
- *
- * [onLongPress] opsional: bila diisi, tekan-lama memanggilnya (dipakai untuk masuk mode seleksi).
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TransactionRow(
@@ -313,7 +295,6 @@ fun TransactionRow(
     val title = displayCategory(
         t.note.ifBlank { t.category }.ifBlank { if (isIn) "Pemasukan" else "Pengeluaran" }
     )
-    // Transfer antar rekening -> SwapHoriz; selain itu ikon kategori, fallback panah.
     val isTransferDisplay = isTransfer || t.note == "Transfer"
     val icon = remember(t.type, t.category, t.note, t.transferGroupId) {
         if (isTransferDisplay) Icons.Filled.SwapHoriz
@@ -321,7 +302,6 @@ fun TransactionRow(
             ?: if (isIn) Icons.Filled.SouthWest else Icons.Filled.NorthEast
     }
     val subtitle = remember(accountName, t.dateMillis, showDate) {
-        // Jam tepat 00:00 dianggap "tidak ada jam" (transaksi hanya mencatat tanggal)
         val time = if (isStartOfDay(t.dateMillis)) null else formatTime(t.dateMillis)
         listOfNotNull(accountName, if (showDate) formatDate(t.dateMillis) else null, time).joinToString(" · ")
     }
@@ -437,24 +417,17 @@ fun QuickAction(
 }
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Chip family: SegmentedChips, SelectableChip, ActionChip, MetricChip
-// Semua turunan palet Ink/Muted/CardBg supaya konsisten di Paper maupun sheet putih.
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Track lembut (turunan Ink) — otomatis menyesuaikan latar Paper / putih. */
-private val ChipTrack = Ink.copy(alpha = 0.055f)
-private val ChipHairline = Ink.copy(alpha = 0.09f)
+private val ChipTrack = CancelBg
+private val ChipHairline = Ink.copy(alpha = 0.0f)
 private val ChipPill = RoundedCornerShape(50)
 
-private val SegmentInset = 4.dp
+private val SegmentInset = 0.dp
 private val SegmentHeight = 44.dp
 private val SegmentTextPad = 14.dp
 private val SegmentMaxWidth = 220.dp
 private val SegmentIconSize = 16.dp
 private val SegmentGap = 6.dp
 
-/** Skala saat ditekan (0.96) dengan spring; dibaca di graphicsLayer supaya tanpa recomposition. */
 @Composable
 private fun rememberPressScale(source: InteractionSource, pressedScale: Float = 0.96f): State<Float> {
     val pressed by source.collectIsPressedAsState()
@@ -493,14 +466,6 @@ private fun CountBadge(count: Int, selected: Boolean) {
 
 private class SegMetric(val text: Dp, val natural: Dp)
 
-/**
- * Segmented control berbentuk pill dengan indikator putih "mengambang" yang bergeser (spring).
- *
- * - [selectedIndex] boleh -1 / di luar range: indikator disembunyikan (dipakai Dialogs saat belum ada pilihan).
- * - Lebar segmen rata bila semua label muat; bila tidak, tiap segmen mengikuti lebar kontennya
- *   dan track bisa di-scroll horizontal (item terpilih otomatis di-scroll ke area terlihat).
- * - [leadingIcons] / [badges] opsional (default null), diindeks sama dengan [options].
- */
 @Composable
 fun SegmentedChips(
     options: List<String>,
@@ -521,7 +486,6 @@ fun SegmentedChips(
         val trackWidth = maxWidth
         val innerAvail = maxOf(trackWidth - SegmentInset * 2, 0.dp)
 
-        // Lebar teks diukur dengan SemiBold (bobot terlebar) => slot tidak bergeser saat bobot berubah.
         val metrics = remember(options, leadingIcons, badges, labelStyle, density) {
             options.mapIndexed { i, label ->
                 val textPx = measurer.measure(text = label, style = labelStyle, maxLines = 1).size.width
@@ -563,7 +527,6 @@ fun SegmentedChips(
             label = "segmentAlpha"
         )
 
-        // Auto-scroll: pusatkan segmen terpilih bila track bisa digulir.
         val scrollState = rememberScrollState()
         val firstScroll = remember { mutableStateOf(true) }
         LaunchedEffect(selectedIndex, widths, scrollState.maxValue) {
@@ -573,7 +536,6 @@ fun SegmentedChips(
             }
             if (firstScroll.value) {
                 scrollState.scrollTo(target)
-                // maxValue masih 0 sebelum layout selesai: tunda penandaan agar posisi awal tidak beranimasi
                 if (scrollState.maxValue > 0 || target <= 0) firstScroll.value = false
             } else {
                 scrollState.animateScrollTo(target)
@@ -687,11 +649,6 @@ private fun SegmentItem(
     }
 }
 
-/**
- * Chip filter tunggal (pill). Terpilih = Ink penuh, tidak terpilih = track lembut.
- * Warna dianimasikan, ditekan = scale 0.96. Lebar tidak bergeser saat bobot teks berubah.
- * [contentDescription] opsional; bila null, label dibaca apa adanya.
- */
 @Composable
 fun SelectableChip(
     label: String,
@@ -755,10 +712,6 @@ fun SelectableChip(
     }
 }
 
-/**
- * Tombol aksi bergaya chip (pill, ikon opsional). Feedback: scale 0.96 + container menggelap tipis.
- * [contentDescription] opsional; bila null, label dibaca apa adanya.
- */
 @Composable
 fun ActionChip(
     label: String,
@@ -813,7 +766,6 @@ fun ActionChip(
     }
 }
 
-/** Kartu metrik di hero (non-clickable). [icon] opsional; default: panah masuk/keluar dari judul. */
 @Composable
 fun MetricChip(
     title: String,

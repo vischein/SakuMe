@@ -109,11 +109,7 @@ import com.sakume.personalfinance.ui.theme.RedSoft
 import com.sakume.personalfinance.ui.transactionAccountLabel
 import java.util.Calendar
 
-/**
- * Filter awal histori (dikirim dari Analytics).
- * [type] "income"/"expense"; [categories] hasil normalizeCategory; [endMillis] eksklusif;
- * [title] teks pada chip filter aktif.
- */
+
 data class HistoryFilter(
     val type: String? = null,
     val categories: Set<String>? = null,
@@ -123,7 +119,6 @@ data class HistoryFilter(
     val title: String? = null
 )
 
-/** Aturan sama dengan Analytics: hanya income/expense bila type/kategori diminta, kategori via normalizeCategory. */
 private fun HistoryFilter.matches(t: TransactionEntity): Boolean {
     if (type != null || categories != null) {
         val isIncome = t.type.equals("income", true)
@@ -137,10 +132,6 @@ private fun HistoryFilter.matches(t: TransactionEntity): Boolean {
     return true
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Model tampilan (dihitung sekali per perubahan data/filter, bukan per frame)
-// ─────────────────────────────────────────────────────────────────────────────
-
 private enum class HistoryPeriod { ALL, TODAY, WEEK, MONTH, DAY }
 
 private enum class HistoryType(val label: String) {
@@ -150,11 +141,6 @@ private enum class HistoryType(val label: String) {
     INTERNAL("Transfer/Tunai")
 }
 
-/**
- * Satu baris tampilan. [internal] = perpindahan antar rekening milik sendiri (transfer, tarik/setor tunai):
- * tidak dihitung sebagai Masuk/Keluar pada ringkasan maupun subtotal harian.
- * [search] = teks pencarian huruf kecil yang sudah dirakit (note, kategori, nama rekening).
- */
 private class HistoryEntry(
     val t: TransactionEntity,
     val accountLabel: String,
@@ -232,8 +218,6 @@ fun TransactionHistoryScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
 
-    // 1) Filter dari Analytics / rekening — diterapkan pada transaksi MENTAH sebelum buildDisplayTransactions
-    //    agar hitungan sama dengan Analytics (transfer tidak ikut). Perilaku lama dipertahankan.
     val visibleTransactions = remember(tx, accounts, accountFilter, activeFilter) {
         val f = activeFilter
         val accountId = f?.accountId ?: accountFilter
@@ -243,7 +227,6 @@ fun TransactionHistoryScreen(
         buildDisplayTransactions(source, accounts)
     }
 
-    // 2) Bungkus sekali: label rekening + teks pencarian
     val entries = remember(visibleTransactions, accounts) {
         visibleTransactions.map { t ->
             val label = transactionAccountLabel(t, accounts)
@@ -256,7 +239,6 @@ fun TransactionHistoryScreen(
         }
     }
 
-    // 3) Periode + tipe + pencarian
     val filtered = remember(entries, period, dayMillis, typeFilter, query) {
         val range: LongRange? = when (period) {
             HistoryPeriod.ALL -> null
@@ -278,7 +260,6 @@ fun TransactionHistoryScreen(
         }
     }
 
-    // 4) Ringkasan hasil filter (Masuk/Keluar/Netto; perpindahan internal tidak dihitung)
     val totals = remember(filtered) {
         var inc = 0L
         var out = 0L
@@ -288,7 +269,6 @@ fun TransactionHistoryScreen(
         FlowTotals(inc, out)
     }
 
-    // 5) Pengelompokan per hari + subtotal harian (data sudah terurut menurun)
     val groups = remember(filtered) {
         val today = startOfDayMillis()
         val cal = Calendar.getInstance()
@@ -315,7 +295,6 @@ fun TransactionHistoryScreen(
         }
     }
 
-    // Seleksi hanya berlaku untuk baris yang sedang terlihat (filter berubah => yang tersembunyi tidak ikut terhapus)
     val visibleIds = remember(filtered) { filtered.mapTo(HashSet()) { it.t.id } }
     val selectedVisible = remember(selected, visibleIds) { selected.filterTo(HashSet()) { it in visibleIds } }
     val allSelected = visibleIds.isNotEmpty() && selectedVisible.size == visibleIds.size
@@ -367,7 +346,6 @@ fun TransactionHistoryScreen(
         if (selectionMode) exitSelection() else closeSearch()
     }
 
-    // Hasil berganti karena pencarian => kembali ke atas supaya ringkasan & hasil pertama terlihat
     LaunchedEffect(query) { listState.scrollToItem(0) }
 
     val f = activeFilter
@@ -562,10 +540,6 @@ fun TransactionHistoryScreen(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Bagian-bagian layar
-// ─────────────────────────────────────────────────────────────────────────────
-
 @Composable
 private fun HistoryHeader(
     title: String,
@@ -651,7 +625,6 @@ private fun SearchField(
     modifier: Modifier = Modifier
 ) {
     val focusRequester = remember { FocusRequester() }
-    // Muncul bersama animasi buka => langsung fokus; runCatching agar aman bila node belum terpasang
     LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
 
     Row(
@@ -696,7 +669,6 @@ private fun SearchField(
     }
 }
 
-/** Ringkasan hasil filter: Masuk / Keluar (dua warna) + Netto. */
 @Composable
 private fun SummaryCard(income: Long, expense: Long, modifier: Modifier = Modifier) {
     val net = income - expense
@@ -769,10 +741,6 @@ private fun FlowTile(
     }
 }
 
-/**
- * Header tanggal (sticky). Di mode seleksi seluruh baris bisa diketuk untuk memilih/melepas semua transaksi hari itu.
- * [checkState]: 0 = tidak ada, 1 = sebagian, 2 = semua terpilih.
- */
 @Composable
 private fun DayHeader(
     group: DayGroup,
@@ -834,7 +802,6 @@ private fun DayHeader(
     }
 }
 
-/** Empty state ramah: membedakan "belum ada transaksi" dan "tidak ada hasil untuk filter ini". */
 @Composable
 private fun HistoryEmptyState(noData: Boolean, canReset: Boolean, onReset: () -> Unit) {
     Column(
@@ -875,7 +842,6 @@ private fun HistoryEmptyState(noData: Boolean, canReset: Boolean, onReset: () ->
     }
 }
 
-/** Chip filter aktif. Hanya tombol hapus (x) yang clickable. */
 @Composable
 private fun ActiveFilterChip(label: String, onClear: () -> Unit) {
     Row(
