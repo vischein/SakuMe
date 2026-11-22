@@ -11,6 +11,9 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.runBlocking
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
+import java.io.File
 
 @Dao
 interface FinanceDao {
@@ -397,19 +400,142 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val ALL_MIGRATIONS = arrayOf(
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4,
+            MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
+            MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
+            MIGRATION_13_14, MIGRATION_14_15
+        )
+
         fun get(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
-                INSTANCE ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "sakume.db"
-                )
-                    .addMigrations(
-                        MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4,
-                        MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15
-                    )
-                    .build()
-                    .also { INSTANCE = it }
+                INSTANCE ?: openEncrypted(context.applicationContext).also { INSTANCE = it }
             }
+
+        private fun openEncrypted(context: Context): AppDatabase {
+            
+            System.loadLibrary("sqlcipher")
+
+            val passphrase = SecureStore.sqlCipherPassphrase(context)
+            val factory = SupportOpenHelperFactory(passphrase)
+
+            
+            if (!SecureStore.isDbMigrated(context)) {
+                migratePlainToEncryptedIfNeeded(context, passphrase)
+            }
+
+            return Room.databaseBuilder(context, AppDatabase::class.java, "sakume.db")
+                .openHelperFactory(factory)
+                .addMigrations(*ALL_MIGRATIONS)
+                .build()
+        }
+
+        
+
+
+
+
+
+
+
+
+
+
+        private fun migratePlainToEncryptedIfNeeded(context: Context, passphrase: ByteArray) {
+            val dbFile = context.getDatabasePath("sakume.db")
+            if (!dbFile.exists()) {
+                SecureStore.setDbMigrated(context, true)
+                return
+            }
+
+            
+            try {
+                val probe = Room.databaseBuilder(context, AppDatabase::class.java, "sakume.db")
+                    .openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf()))
+                    .addMigrations(*ALL_MIGRATIONS)
+                    .build()
+                probe.openHelper.writableDatabase
+                probe.close()
+                SecureStore.setDbMigrated(context, true)
+                return
+            } catch (_: Exception) {
+                
+            }
+
+            try {
+                
+                val plainName = "sakume_plain_migrate.db"
+                val plainFile = context.getDatabasePath(plainName)
+                renameDbFiles(dbFile, plainFile)
+
+                val plain = Room.databaseBuilder(context, AppDatabase::class.java, plainName)
+                    .addMigrations(*ALL_MIGRATIONS)
+                    .build()
+                val repo = FinanceRepository(plain)
+                val json = runBlocking {
+                    val data = repo.snapshot()
+                    BackupCodec.encode(
+                        data.copy(
+                            meta = BackupMeta(
+                                createdAtMillis = System.currentTimeMillis(),
+                                appVersion = try {
+                                    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+                                } catch (_: Exception) { "" },
+                                source = "sqlcipher-migrate"
+                            )
+                        )
+                    )
+                }
+                plain.close()
+
+                
+                val safetyDir = File(context.filesDir, "backups").also { if (!it.exists()) it.mkdirs() }
+                val safetyFile = File(
+                    safetyDir,
+                    "sakume_sebelum_impor_sqlcipher_${System.currentTimeMillis()}.json"
+                )
+                safetyFile.writeText(json)
+
+                deleteDbFiles(plainFile)
+                SecureStore.setDbMigrated(context, true)
+
+                
+                
+                try {
+                    val encrypted = Room.databaseBuilder(context, AppDatabase::class.java, "sakume.db")
+                        .openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf()))
+                        .addMigrations(*ALL_MIGRATIONS)
+                        .build()
+                    runBlocking {
+                        FinanceRepository(encrypted).importJson(json)
+                    }
+                    encrypted.close()
+                } catch (reimport: Exception) {
+                    android.util.Log.e(
+                        "SakuMe",
+                        "SQLCipher re-import failed; safety backup at ${safetyFile.name}: ${reimport.message}",
+                        reimport
+                    )
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SakuMe", "SQLCipher migration failed: ${e.message}", e)
+                
+            }
+        }
+
+        private fun renameDbFiles(from: File, to: File) {
+            if (!from.exists()) return
+            from.renameTo(to)
+            File(from.path + "-wal").takeIf { it.exists() }?.renameTo(File(to.path + "-wal"))
+            File(from.path + "-shm").takeIf { it.exists() }?.renameTo(File(to.path + "-shm"))
+            File(from.path + "-journal").takeIf { it.exists() }?.renameTo(File(to.path + "-journal"))
+        }
+
+        private fun deleteDbFiles(base: File) {
+            base.delete()
+            File(base.path + "-wal").delete()
+            File(base.path + "-shm").delete()
+            File(base.path + "-journal").delete()
+        }
     }
 }

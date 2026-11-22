@@ -170,12 +170,18 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun exportJson() = BackupManager.buildFullJson(getApplication())
 
-    fun importJson(json: String, onDone: (String) -> Unit = {}, error: (String) -> Unit = {}) {
+    fun importJson(
+        json: String,
+        password: CharArray? = null,
+        onDone: (String) -> Unit = {},
+        error: (String) -> Unit = {}
+    ) {
         viewModelScope.launch {
             try {
                 val app = getApplication<Application>()
+                
                 BackupManager.savePreImport(app, repo.exportJson())
-                val imported = repo.importJson(json)
+                val imported = repo.importJson(app, json, password)
                 BackupManager.applySettings(app, imported.settings)
                 onDone("Kondisi sebelum impor tersimpan di daftar backup (\"Sebelum impor\").")
             } catch (e: Exception) {

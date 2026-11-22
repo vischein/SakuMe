@@ -20,8 +20,8 @@ object BackupManager {
     private const val PREFIX_PRE_IMPORT = "sakume_sebelum_impor_"
     private const val KEEP_PRE_IMPORT = 3
 
-    // Pangkas otomatis menurut umur: hanya saat ada backup harian BARU dan jumlah backup harian > 4.
-    // Yang dihapus = lebih tua dari 3 hari, terlama dulu, dan selalu menyisakan minimal 4 backup.
+    
+    
     private const val AGE_PRUNE_MIN_COUNT = 4
     private const val AGE_PRUNE_MAX_DAYS = 3L
 
@@ -94,28 +94,29 @@ object BackupManager {
                     }
 
                     val now = System.currentTimeMillis()
-                    val json = BackupCodec.encode(
-                        data.copy(
-                            meta = BackupMeta(
-                                createdAtMillis = now,
-                                appVersion = appVersion(context),
-                                source = source
-                            ),
-                            settings = settings
-                        )
+                    val payload = data.copy(
+                        meta = BackupMeta(
+                            createdAtMillis = now,
+                            appVersion = appVersion(context),
+                            source = source
+                        ),
+                        settings = settings
                     )
-                    val back = BackupCodec.decode(json)
+                    
+                    val plainJson = BackupCodec.encode(payload)
+                    val back = BackupCodec.decode(plainJson)
                     check(back.copy(meta = null, settings = null) == data) { "Verifikasi backup gagal" }
+                    val encrypted = BackupCodec.encodeEncrypted(context, payload)
 
                     val name = PREFIX_DAILY + dayStamp(now) + ".json"
                     val isNewBackup = !File(dir(context), name).exists()
-                    writeAtomic(File(dir(context), name), json)
+                    writeAtomic(File(dir(context), name), encrypted)
                     pruneInternal(context)
                     if (isNewBackup) pruneInternalByAge(context, now)
 
                     var folderError: String? = null
                     AppPrefs.autoBackupFolder(context)?.let { folder ->
-                        folderError = copyToFolder(context, folder, name, json)
+                        folderError = copyToFolder(context, folder, name, encrypted)
                         if (folderError == null) {
                             pruneFolder(context, folder)
                             if (isNewBackup) pruneFolderByAge(context, folder, now)
@@ -132,21 +133,50 @@ object BackupManager {
             }
         }
 
+    
+
+
+
     suspend fun buildFullJson(context: Context, source: String = "export"): String = withContext(Dispatchers.IO) {
         val data = FinanceRepository(AppDatabase.get(context)).snapshot()
-        BackupCodec.encode(
+        val payload = data.copy(
+            meta = BackupMeta(
+                createdAtMillis = System.currentTimeMillis(),
+                appVersion = appVersion(context),
+                source = source
+            ),
+            settings = currentSettings(context)
+        )
+        BackupCodec.encodeEncrypted(context, payload)
+    }
+
+    
+    suspend fun buildPortableEncrypted(
+        context: Context,
+        password: CharArray,
+        source: String = "export"
+    ): String = withContext(Dispatchers.IO) {
+        val data = FinanceRepository(AppDatabase.get(context)).snapshot()
+        val plain = BackupCodec.encode(
             data.copy(
-                meta = BackupMeta(createdAtMillis = System.currentTimeMillis(), appVersion = appVersion(context), source = source),
+                meta = BackupMeta(
+                    createdAtMillis = System.currentTimeMillis(),
+                    appVersion = appVersion(context),
+                    source = source
+                ),
                 settings = currentSettings(context)
             )
         )
+        SecureCrypto.encryptWithPassword(plain, password)
     }
 
     suspend fun savePreImport(context: Context, currentJson: String): String = withContext(Dispatchers.IO) {
         val name = PREFIX_PRE_IMPORT + SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.US).format(Date()) + ".json"
         val wrapped = try {
-            val data = BackupCodec.decode(currentJson)
-            BackupCodec.encode(
+            
+            val data = BackupCodec.decodeMaybeEncrypted(context, currentJson)
+            BackupCodec.encodeEncrypted(
+                context,
                 data.copy(
                     meta = BackupMeta(
                         createdAtMillis = System.currentTimeMillis(),
@@ -157,6 +187,7 @@ object BackupManager {
                 )
             )
         } catch (_: Exception) {
+            
             currentJson
         }
         writeAtomic(File(dir(context), name), wrapped)
@@ -169,7 +200,7 @@ object BackupManager {
 
         dir(context).listFiles { f -> f.isFile && f.name.endsWith(".json") && kindOf(f.name) != null }
             ?.forEach { f ->
-                result += buildEntry(f.name, f.length(), f.lastModified(), inFolder = false, file = f, uri = null) {
+                result += buildEntry(context, f.name, f.length(), f.lastModified(), inFolder = false, file = f, uri = null) {
                     f.readText()
                 }
             }
@@ -182,7 +213,7 @@ object BackupManager {
                     val n = doc.name ?: return@forEach
                     if (!doc.isFile || !n.endsWith(".json") || kindOf(n) == null) return@forEach
                     if (result.any { it.name == n && it.sizeBytes == doc.length() }) return@forEach
-                    result += buildEntry(n, doc.length(), doc.lastModified(), inFolder = true, file = null, uri = doc.uri) {
+                    result += buildEntry(context, n, doc.length(), doc.lastModified(), inFolder = true, file = null, uri = doc.uri) {
                         context.contentResolver.openInputStream(doc.uri)?.bufferedReader()?.use { it.readText() }
                             ?: error("Tidak bisa membuka file")
                     }
@@ -233,6 +264,7 @@ object BackupManager {
     }
 
     private fun buildEntry(
+        context: Context,
         name: String,
         size: Long,
         lastModified: Long,
@@ -243,12 +275,14 @@ object BackupManager {
     ): BackupEntry {
         val kind = kindOf(name) ?: Kind.DAILY
         return try {
-            val data = BackupCodec.decode(read())
+            val data = BackupCodec.decodeMaybeEncrypted(context, read())
             BackupEntry(
                 name, data.meta?.createdAtMillis?.takeIf { it > 0 } ?: lastModified, size, kind,
                 data.accounts.size, data.transactions.size, true, inFolder, file, uri
             )
         } catch (_: Exception) {
+            
+            
             BackupEntry(name, lastModified, size, kind, 0, 0, false, inFolder, file, uri)
         }
     }
@@ -274,7 +308,7 @@ object BackupManager {
             .drop(KEEP_PRE_IMPORT).forEach { it.delete() }
     }
 
-    /** Umur backup harian dalam hari kalender (dari tanggal di nama file); null bila nama tak terbaca. */
+    
     private fun ageInDays(name: String, nowMillis: Long): Long? {
         val stamp = name.removePrefix(PREFIX_DAILY).removeSuffix(".json")
         val dayStart = try {

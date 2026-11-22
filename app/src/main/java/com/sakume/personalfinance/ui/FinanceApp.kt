@@ -108,7 +108,7 @@ fun FinanceApp(
         if (t != null) {
             if (t in setOf("Home", "Analisis", "Bills", "Invest", "More")) {
                 if (t == "More") {
-                    // Tab More dihapus: piutang/utang kini segmen ke-3 di tab Invest
+                    
                     investSegment = 2
                     tab = "Invest"
                 } else {

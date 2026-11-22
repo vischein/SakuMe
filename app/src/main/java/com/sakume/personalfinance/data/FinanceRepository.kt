@@ -959,12 +959,26 @@ class FinanceRepository(private val db: AppDatabase) {
 
     suspend fun exportJson(): String = BackupCodec.encode(snapshot())
 
-    suspend fun importJson(json: String): BackupData = db.withTransaction {
+    
+
+
+
+    suspend fun importJson(json: String): BackupData {
         val decoded = if (BackupCodec.isLegacySakuMe(json)) {
             BackupCodec.decodeLegacySakuMe(json)
         } else {
             BackupCodec.decode(json)
         }
+        return importJsonDecoded(decoded)
+    }
+
+    suspend fun importJson(
+        context: android.content.Context,
+        json: String,
+        password: CharArray? = null
+    ): BackupData = importJsonDecoded(BackupCodec.decodeMaybeEncrypted(context, json, password))
+
+    private suspend fun importJsonDecoded(decoded: BackupData): BackupData = db.withTransaction {
         val data = normalizeBills(normalizeDebts(decoded))
         validateBackup(data)
         dao.clearAccounts()
@@ -1044,7 +1058,8 @@ class FinanceRepository(private val db: AppDatabase) {
         require(accountIds.size == data.accounts.size) { "Backup memiliki ID rekening duplikat" }
         require(assetIds.size == data.investments.size) { "Backup memiliki ID investasi duplikat" }
         require(transactionIds.size == data.transactions.size) { "Backup memiliki ID transaksi duplikat" }
-        require(data.accounts.all { it.name.isNotBlank() && it.balance >= 0L }) { "Backup memiliki rekening tidak valid" }
+        
+        require(data.accounts.all { it.name.isNotBlank() }) { "Backup memiliki rekening tidak valid" }
         require(data.transactions.all {
             it.amount > 0L && it.type in setOf("income", "expense", "transfer_in", "transfer_out") &&
                 it.accountId in accountIds && it.dateMillis > 0L

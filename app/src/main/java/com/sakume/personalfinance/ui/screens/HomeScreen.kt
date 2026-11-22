@@ -106,6 +106,7 @@ import com.sakume.personalfinance.data.InvestmentEntity
 import com.sakume.personalfinance.data.TransactionEntity
 import com.sakume.personalfinance.ui.AppPrefs
 import com.sakume.personalfinance.ui.buildDisplayTransactions
+import com.sakume.personalfinance.ui.components.ProviderLogo
 import com.sakume.personalfinance.ui.components.TransactionRow
 import com.sakume.personalfinance.ui.daysUntilDue
 import com.sakume.personalfinance.ui.dueInLabel
@@ -117,6 +118,8 @@ import com.sakume.personalfinance.ui.rupiah
 import com.sakume.personalfinance.ui.startOfMonthMillis
 import com.sakume.personalfinance.ui.theme.CardBg
 import com.sakume.personalfinance.ui.theme.Green
+import com.sakume.personalfinance.ui.theme.Gold
+import com.sakume.personalfinance.ui.theme.Accent
 import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Muted
 import com.sakume.personalfinance.ui.theme.Panel
@@ -402,6 +405,7 @@ fun HomeScreen(
                                 value = goalsTotal,
                                 footnote = if (goalsTargetSum > 0L) "${(goalsProgress * 100).roundToInt()}% dari target" else "$goalsCount target",
                                 icon = Icons.Filled.Savings,
+                                iconTint = Green,
                                 hidden = hideBalance,
                                 modifier = Modifier.weight(1f).fillMaxHeight(),
                                 progress = if (goalsTargetSum > 0L) goalsProgress else null,
@@ -412,6 +416,7 @@ fun HomeScreen(
                                 value = investTotal,
                                 footnote = "$investCount platform",
                                 icon = Icons.Filled.TrendingUp,
+                                iconTint = Accent,
                                 hidden = hideBalance,
                                 modifier = Modifier.weight(1f).fillMaxHeight(),
                                 onClick = { onAction("invest") }
@@ -426,6 +431,7 @@ fun HomeScreen(
                                 value = piutangTotal,
                                 footnote = "$piutangCount belum lunas",
                                 icon = Icons.Filled.CallReceived,
+                                iconTint = Gold,
                                 hidden = hideBalance,
                                 modifier = Modifier.weight(1f).fillMaxHeight(),
                                 onClick = { onAction("more:piutang") }
@@ -435,6 +441,7 @@ fun HomeScreen(
                                 value = utangTotal,
                                 footnote = "$utangCount belum lunas",
                                 icon = Icons.Filled.CallMade,
+                                iconTint = Red,
                                 hidden = hideBalance,
                                 modifier = Modifier.weight(1f).fillMaxHeight(),
                                 onClick = { onAction("more:utang") }
@@ -1042,8 +1049,6 @@ private fun BillsCard(
 private fun BillRow(g: BillGroup, hidden: Boolean, onClick: () -> Unit) {
     val overdue = g.days < 0
     val urgent = g.days <= 3
-    val badgeBg = if (urgent && !overdue) Ink else Ink.copy(alpha = 0.06f)
-    val badgeFg = if (urgent && !overdue) Color.White else Ink
     val pillBg = when {
         overdue -> Red.copy(alpha = 0.10f)
         urgent -> Ink
@@ -1054,7 +1059,6 @@ private fun BillRow(g: BillGroup, hidden: Boolean, onClick: () -> Unit) {
         urgent -> Color.White
         else -> Muted
     }
-    val initial = remember(g.provider) { g.provider.trim().firstOrNull()?.uppercase() ?: "?" }
     Row(
         Modifier
             .fillMaxWidth()
@@ -1066,14 +1070,7 @@ private fun BillRow(g: BillGroup, hidden: Boolean, onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            Modifier
-                .size(40.dp)
-                .background(badgeBg, RoundedCornerShape(14.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(initial, color = badgeFg, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        }
+        ProviderLogo(provider = g.provider, size = 40.dp, overdue = overdue, corner = 12.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -1148,6 +1145,7 @@ private fun MiniTile(
     value: Long,
     footnote: String,
     icon: ImageVector,
+    iconTint: Color = Ink,
     hidden: Boolean,
     modifier: Modifier,
     progress: Float? = null,
@@ -1169,7 +1167,7 @@ private fun MiniTile(
                 .background(Ink.copy(alpha = 0.06f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, tint = Ink, modifier = Modifier.size(19.dp))
+            Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(19.dp))
         }
         Spacer(Modifier.height(12.dp))
         Text(title, color = Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

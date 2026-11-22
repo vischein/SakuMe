@@ -80,7 +80,7 @@ private data class BottomNavItem(
     val outlined: ImageVector,
 )
 
-/** Aksi cepat di menu "+". [key] = nilai `dialog` di FinanceApp. Hapus/ubah item di sini untuk menyesuaikan menu. */
+
 private data class QuickAction(val key: String, val label: String, val icon: ImageVector)
 
 private val quickActions = listOf(
@@ -92,10 +92,10 @@ private val quickActions = listOf(
     QuickAction("debt", "Piutang / Utang", Icons.Filled.SwapVert),
 )
 
-/**
- * Bottom bar: Home · Analisis · [ + ] · Bills · Invest(Tabungan/Investasi/Piutang).
- * Tombol "+" di tengah membuka menu aksi cepat; pilihan dikirim lewat [onQuickAction] (key dialog).
- */
+
+
+
+
 @Composable
 fun SakuMeBottomBar(
     selected: String,
@@ -113,7 +113,7 @@ fun SakuMeBottomBar(
                 filled = Icons.AutoMirrored.Filled.ReceiptLong,
                 outlined = Icons.AutoMirrored.Outlined.ReceiptLong,
             ),
-            // Tab Invest berganti label/ikon mengikuti segmen: Tabungan · Investasi · Piutang/Utang
+            
             when (investSegment) {
                 0 -> BottomNavItem("Invest", "Tabungan", Icons.Filled.Savings, Icons.Outlined.Savings)
                 1 -> BottomNavItem(
@@ -191,7 +191,7 @@ private fun RowScope.QuickAddSlot(
     Box(
         Modifier
             .weight(0.9f)
-            // Tinggi NavigationBar hanya batas minimum; jangan isi penuh tinggi, nanti slot melebar setinggi layar.
+            
             .heightIn(min = 80.dp)
             .onSizeChanged { slotHeightPx = it.height },
         contentAlignment = Alignment.Center,

@@ -62,10 +62,10 @@ import com.sakume.personalfinance.ui.theme.RedSoft
 
 private val debtFilters = listOf("Semua", "Piutang", "Utang")
 
-/**
- * Bagian Piutang / Utang — dipakai di tab Invest (segmen "Piutang/Utang").
- * Menambah item ke LazyColumn pemanggil: posisi bersih → filter → daftar.
- */
+
+
+
+
 internal fun LazyListScope.debtSection(
     debts: List<DebtEntity>,
     debtFilter: String,
