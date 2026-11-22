@@ -46,25 +46,30 @@ import java.util.UUID
 )
 object BackupCodec {
     const val FORMAT_VERSION = 2
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json = Json { prettyPrint = false; ignoreUnknownKeys = true; encodeDefaults = true }
     fun encode(data: BackupData): String = json.encodeToString(data)
     fun decode(text: String): BackupData = json.decodeFromString(text)
-
-    
-
-
 
     fun encodeEncrypted(context: android.content.Context, data: BackupData): String {
         val plain = encode(data)
         return SecureCrypto.encrypt(plain, SecureStore.getOrCreateMasterKey(context))
     }
 
-    
-
-
-
-
-
+    fun encodeForBackup(context: android.content.Context, data: BackupData): String {
+        val stored = storedPassword(context)
+        if (stored == null) return encodeEncrypted(context, data)
+        try {
+            return SecureCrypto.encryptWithPassword(
+                plain = encode(data),
+                password = stored,
+                accounts = data.accounts.size,
+                transactions = data.transactions.size,
+                createdAtMillis = data.meta?.createdAtMillis?.takeIf { it > 0 } ?: System.currentTimeMillis()
+            )
+        } finally {
+            stored.fill('\u0000')
+        }
+    }
 
     fun decodeMaybeEncrypted(
         context: android.content.Context,
@@ -73,19 +78,15 @@ object BackupCodec {
     ): BackupData {
         val trimmed = text.trimStart()
         val plain = when {
-            SecureCrypto.isPasswordEncrypted(trimmed) -> {
-                require(password != null && password.isNotEmpty()) {
-                    "Backup dilindungi password. Masukkan password untuk membuka."
-                }
-                SecureCrypto.decryptWithPassword(trimmed, password)
-            }
+            SecureCrypto.isPasswordEncrypted(trimmed) -> decryptPasswordFile(context, trimmed, password)
             SecureCrypto.isEncrypted(trimmed) -> {
                 try {
                     SecureCrypto.decrypt(trimmed, SecureStore.getOrCreateMasterKey(context))
                 } catch (e: Exception) {
                     throw IllegalArgumentException(
-                        "Backup terenkripsi dengan kunci perangkat lain. " +
-                            "Restore hanya bisa di perangkat yang sama, atau gunakan backup ber-password.",
+                        "Backup ini dienkripsi dengan kunci HP/instalasi lain, jadi tidak bisa dibuka di sini. " +
+                            "Backup berpassword tidak punya batasan ini: aktifkan password backup, " +
+                            "lalu buat backup baru dari HP/instalasi asal.",
                         e
                     )
                 }
@@ -93,6 +94,44 @@ object BackupCodec {
             else -> trimmed
         }
         return if (isLegacySakuMe(plain)) decodeLegacySakuMe(plain) else decode(plain)
+    }
+
+    private fun storedPassword(context: android.content.Context): CharArray? {
+        val pw = try {
+            SecureStore.getBackupPassword(context)
+        } catch (e: Exception) {
+            null
+        }
+        if (pw != null && pw.isEmpty()) return null
+        return pw
+    }
+
+    private fun decryptPasswordFile(
+        context: android.content.Context,
+        text: String,
+        password: CharArray?
+    ): String {
+        if (password != null) {
+            if (password.isEmpty()) {
+                throw BackupPasswordException(wrong = true, message = "Password wajib diisi.")
+            }
+            return SecureCrypto.decryptWithPassword(text, password)
+        }
+        val stored = storedPassword(context)
+            ?: throw BackupPasswordException(
+                wrong = false,
+                message = "Backup dilindungi password. Masukkan password backup untuk membukanya."
+            )
+        try {
+            return SecureCrypto.decryptWithPassword(text, stored)
+        } catch (e: BackupPasswordException) {
+            throw BackupPasswordException(
+                wrong = false,
+                message = "Password backup yang tersimpan di HP ini tidak cocok dengan file ini. Masukkan password backup untuk membukanya."
+            )
+        } finally {
+            stored.fill('\u0000')
+        }
     }
 
     fun isLegacySakuMe(text: String): Boolean {

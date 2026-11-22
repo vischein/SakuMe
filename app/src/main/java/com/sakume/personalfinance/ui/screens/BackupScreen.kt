@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -71,6 +72,7 @@ fun BackupScreen(
     onClearFolder: () -> Unit,
     onRestore: (BackupEntry) -> Unit,
     onDeleteEntry: (BackupEntry) -> Unit,
+    onSetPassword: () -> Unit = {},
     onPrefsChanged: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -79,6 +81,7 @@ fun BackupScreen(
     val lastMillis = remember(refreshKey) { AppPrefs.autoBackupLastMillis(context) }
     val folderLabel = remember(refreshKey) { BackupManager.folderLabel(context) }
     val folderWritable = remember(refreshKey) { BackupManager.folderWritable(context) }
+    val hasPassword = remember(refreshKey) { BackupManager.hasPassword(context) }
 
     var entries by remember { mutableStateOf<List<BackupEntry>?>(null) }
     LaunchedEffect(refreshKey) { entries = BackupManager.list(context) }
@@ -98,6 +101,55 @@ fun BackupScreen(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali", tint = Ink)
                 }
                 Text("Backup & Restore", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Ink)
+            }
+        }
+
+        item {
+            Card {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Lock, null, modifier = Modifier.size(18.dp), tint = if (hasPassword) Ink else Red)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Password backup", fontWeight = FontWeight.Bold, color = Ink, fontSize = 16.sp)
+                }
+                if (!hasPassword) {
+                    Text(
+                        "Backup masih terkunci ke HP ini saja. Kalau SakuMe di-uninstall, datanya dihapus, atau kamu " +
+                            "ganti HP, file backup tidak bisa dibuka lagi, termasuk yang ada di folder cadangan.",
+                        color = Red, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Atur password agar backup bisa dipulihkan di HP mana pun dan setelah install ulang. " +
+                            "Backup otomatis tetap berjalan tanpa diminta password.",
+                        color = Muted, fontSize = 12.sp
+                    )
+                    Button(
+                        onClick = onSetPassword,
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Ink)
+                    ) {
+                        Text("Atur password backup")
+                    }
+                } else {
+                    Text("Aktif", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Backup otomatis, ekspor, dan bagikan memakai password ini, jadi bisa dipulihkan di HP lain " +
+                            "atau setelah install ulang. Backup yang dibuat sebelum password diganti tetap memakai " +
+                            "password lamanya.",
+                        color = Muted, fontSize = 12.sp
+                    )
+                    Text(
+                        "Ingat password ini. Password tidak bisa dipulihkan; kalau lupa, backup berpassword tidak bisa dibuka.",
+                        color = Red, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
+                    )
+                    OutlinedButton(
+                        onClick = onSetPassword,
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Ganti password", color = Ink)
+                    }
+                }
             }
         }
 
@@ -210,7 +262,12 @@ fun BackupScreen(
                 Text("Ekspor / impor manual", fontWeight = FontWeight.Bold, color = Ink, fontSize = 16.sp)
                 Text(
                     "Bagikan file backup ke tempat lain, atau pulihkan dari file JSON (termasuk backup lama). " +
-                        "File tidak terenkripsi — jangan bagikan ke sembarang orang.",
+                        if (hasPassword)
+                            "File dienkripsi dengan password backup: kamu butuh password itu untuk membukanya di HP lain. " +
+                                "Jangan bagikan password-nya."
+                        else
+                            "Sebelum mengekspor, kamu akan diminta mengatur password backup lebih dulu supaya file " +
+                                "bisa dibuka di HP lain.",
                     color = Muted, fontSize = 12.sp
                 )
                 Button(
@@ -239,12 +296,30 @@ fun BackupScreen(
     }
 
     pending?.let { e ->
+        val hasCounts = e.hasCounts()
         RestoreBackupDialog(
-            title = if (e.valid) "Pulihkan backup ${dateLong(e.createdAtMillis)}?" else "File backup rusak",
-            detail = if (e.valid)
-                "Data sekarang akan DIGANTI dengan isi backup ini (${e.accountCount} rekening, ${e.transactionCount} transaksi). " +
-                    "Kondisi sekarang disimpan dulu otomatis sebagai \"Sebelum impor\", jadi masih bisa dibatalkan."
-            else "File ini tidak bisa dibaca sebagai backup SakuMe. Kamu bisa menghapusnya.",
+            title = when {
+                e.valid -> "Pulihkan backup ${dateLong(e.createdAtMillis)}?"
+                e.foreignKey -> "Backup terkunci ke HP lain"
+                else -> "File backup rusak"
+            },
+            detail = when {
+                e.valid ->
+                    "Data sekarang akan DIGANTI dengan isi backup ini" +
+                        (if (hasCounts) " (${e.accountCount} rekening, ${e.transactionCount} transaksi)" else "") + ". " +
+                        "Kalau sudah ada data, kondisi sekarang disimpan dulu otomatis sebagai \"Sebelum impor\", " +
+                        "jadi masih bisa dibatalkan." +
+                        (if (e.passwordProtected)
+                            "\n\nBackup ini berpassword. SakuMe mencoba password backup yang tersimpan di HP ini; " +
+                                "kalau tidak cocok, kamu akan diminta memasukkan passwordnya."
+                        else "")
+                e.foreignKey ->
+                    "File ini dienkripsi dengan kunci HP atau instalasi SakuMe lain (backup lama tanpa password), " +
+                        "jadi tidak bisa dibuka di sini. Bisa juga file-nya rusak.\n\n" +
+                        "Kalau backup ini dibuat di HP lama, buka SakuMe di sana, atur password backup, lalu buat " +
+                        "backup baru. Backup berpassword tidak punya batasan ini. Kamu juga bisa menghapus file ini."
+                else -> "File ini tidak bisa dibaca sebagai backup SakuMe. Kamu bisa menghapusnya."
+            },
             canRestore = e.valid,
             onRestore = { pending = null; onRestore(e) },
             onDelete = { pending = null; onDeleteEntry(e) },
@@ -253,12 +328,18 @@ fun BackupScreen(
     }
 }
 
+private fun BackupEntry.hasCounts(): Boolean =
+    valid && !(passwordProtected && accountCount == 0 && transactionCount == 0)
+
 @Composable
 private fun BackupRow(e: BackupEntry, onClick: () -> Unit) {
-    val tag = when {
-        !e.valid -> "Rusak"
-        e.kind == BackupManager.Kind.PRE_IMPORT -> "Sebelum impor"
-        else -> null
+    val tags = buildList {
+        when {
+            !e.valid && e.foreignKey -> add("Kunci HP lain" to true)
+            !e.valid -> add("Rusak" to true)
+        }
+        if (e.kind == BackupManager.Kind.PRE_IMPORT) add("Sebelum impor" to false)
+        if (e.valid && e.passwordProtected) add("Berpassword" to false)
     }
     Surface(
         shape = RoundedCornerShape(14.dp),
@@ -271,24 +352,28 @@ private fun BackupRow(e: BackupEntry, onClick: () -> Unit) {
                 Text(
                     buildString {
                         append(timeOnly(e.createdAtMillis))
-                        if (e.valid) append(" · ${e.accountCount} rekening · ${e.transactionCount} transaksi")
+                        if (e.hasCounts()) append(" · ${e.accountCount} rekening · ${e.transactionCount} transaksi")
                         append(" · ${sizeLabel(e.sizeBytes)}")
                         if (e.inFolder) append(" · di folder")
                     },
                     color = Muted, fontSize = 12.sp
                 )
             }
-            if (tag != null) {
-                Text(
-                    tag,
-                    color = if (e.valid) Ink else Red,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFFF0F0F3))
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                )
+            if (tags.isNotEmpty()) {
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    tags.forEach { (label, warn) ->
+                        Text(
+                            label,
+                            color = if (warn) Red else Ink,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFFF0F0F3))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                }
             }
         }
     }

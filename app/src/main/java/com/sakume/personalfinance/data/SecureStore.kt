@@ -15,11 +15,12 @@ object SecureStore {
     private const val PREF_FILE = "sakume_secure"
     private const val KEY_MASTER = "master_key_v1"
     private const val KEY_MIGRATED = "db_sqlcipher_migrated"
+    private const val KEY_BACKUP_PW = "backup_password_v1"
 
     @Volatile
     private var cachedKey: ByteArray? = null
 
-    private fun prefs(context: Context) = try {
+    private fun encryptedPrefsOrNull(context: Context) = try {
         val masterKey = MasterKey.Builder(context.applicationContext)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
@@ -31,8 +32,32 @@ object SecureStore {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
     } catch (e: Exception) {
-        
-        context.applicationContext.getSharedPreferences(PREF_FILE + "_fallback", Context.MODE_PRIVATE)
+        null
+    }
+
+    private fun prefs(context: Context) = encryptedPrefsOrNull(context)
+        ?: context.applicationContext.getSharedPreferences(PREF_FILE + "_fallback", Context.MODE_PRIVATE)
+
+    // ---- Password backup (portabel) ----
+    // Disimpan HANYA di EncryptedSharedPreferences (tanpa fallback ke prefs polos),
+    // supaya backup otomatis di background bisa memakainya tanpa meminta ke pengguna.
+
+    fun hasBackupPassword(context: Context): Boolean =
+        encryptedPrefsOrNull(context)?.contains(KEY_BACKUP_PW) == true
+
+    /** Salinan password; pemanggil wajib menimpa array-nya (fill) setelah dipakai. */
+    fun getBackupPassword(context: Context): CharArray? =
+        encryptedPrefsOrNull(context)?.getString(KEY_BACKUP_PW, null)?.toCharArray()
+
+    /** @return false bila penyimpanan aman tidak tersedia (password TIDAK disimpan). */
+    fun setBackupPassword(context: Context, password: CharArray): Boolean {
+        if (password.isEmpty()) return false
+        val p = encryptedPrefsOrNull(context) ?: return false
+        return p.edit().putString(KEY_BACKUP_PW, String(password)).commit()
+    }
+
+    fun clearBackupPassword(context: Context) {
+        encryptedPrefsOrNull(context)?.edit()?.remove(KEY_BACKUP_PW)?.commit()
     }
 
     

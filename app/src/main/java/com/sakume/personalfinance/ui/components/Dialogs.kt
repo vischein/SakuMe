@@ -55,12 +55,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.data.AccountEntity
+import com.sakume.personalfinance.data.SecureCrypto
 import com.sakume.personalfinance.ui.AppPrefs
 import com.sakume.personalfinance.ui.rupiah
 import com.sakume.personalfinance.ui.theme.Accent
@@ -986,5 +988,110 @@ fun RestoreBackupDialog(
         }
         Spacer(Modifier.height(8.dp))
         SheetButton("Hapus file backup ini", onDelete, Modifier.fillMaxWidth(), primary = false)
+    }
+}
+
+@Composable
+private fun PasswordField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    visible: Boolean
+) {
+    TextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        singleLine = true,
+        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = moneyFieldColors()
+    )
+}
+
+@Composable
+fun BackupPasswordDialog(
+    title: String,
+    detail: String,
+    confirmField: Boolean,
+    errorText: String?,
+    actionLabel: String,
+    onDismiss: () -> Unit,
+    onSubmit: (CharArray) -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
+    var visible by remember { mutableStateOf(false) }
+    var externalErrorStale by remember(errorText) { mutableStateOf(false) }
+
+    val minLength = SecureCrypto.MIN_PASSWORD_LENGTH
+    val tooShort = confirmField && password.isNotEmpty() && password.length < minLength
+    val mismatch = confirmField && confirm.isNotEmpty() && confirm != password
+    val valid = password.isNotEmpty() &&
+        (!confirmField || (password.length >= minLength && confirm == password))
+
+    val inlineError = when {
+        tooShort -> "Password minimal $minLength karakter."
+        mismatch -> "Konfirmasi password tidak sama."
+        !externalErrorStale -> errorText
+        else -> null
+    }
+
+    AppBottomSheet(onDismiss) {
+        Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Ink)
+        Spacer(Modifier.height(8.dp))
+        Text(detail, color = Muted, fontSize = 14.sp)
+        if (confirmField) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Password TIDAK bisa dipulihkan atau direset. Kalau lupa, backup berpassword tidak bisa dibuka lagi " +
+                    "oleh siapa pun. Catat di tempat yang aman.",
+                color = Red, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
+            )
+        }
+        Spacer(Modifier.height(14.dp))
+        PasswordField(
+            value = password,
+            onValueChange = { password = it; externalErrorStale = true },
+            label = if (confirmField) "Password backup" else "Password",
+            visible = visible
+        )
+        if (confirmField) {
+            Spacer(Modifier.height(8.dp))
+            PasswordField(
+                value = confirm,
+                onValueChange = { confirm = it },
+                label = "Ulangi password",
+                visible = visible
+            )
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Text(
+                if (visible) "Sembunyikan" else "Tampilkan",
+                color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { visible = !visible }
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+            )
+        }
+        if (inlineError != null) {
+            Text(inlineError, color = Red, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        } else if (confirmField && password.isEmpty()) {
+            Text("Minimal $minLength karakter.", color = Muted, fontSize = 12.sp)
+        }
+        Spacer(Modifier.height(14.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SheetButton("Batal", onDismiss, Modifier.weight(1f), primary = false)
+            SheetButton(
+                actionLabel,
+                { if (valid) onSubmit(password.toCharArray()) },
+                Modifier.weight(1f),
+                primary = true,
+                enabled = valid
+            )
+        }
     }
 }

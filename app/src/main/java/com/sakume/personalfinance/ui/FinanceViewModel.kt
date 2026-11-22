@@ -4,9 +4,11 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sakume.personalfinance.data.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class FinanceViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = FinanceRepository(AppDatabase.get(app))
@@ -174,18 +176,48 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
         json: String,
         password: CharArray? = null,
         onDone: (String) -> Unit = {},
-        error: (String) -> Unit = {}
+        error: (String) -> Unit = {},
+        onNeedPassword: (Boolean) -> Unit = {}
     ) {
         viewModelScope.launch {
             try {
                 val app = getApplication<Application>()
-                
-                BackupManager.savePreImport(app, repo.exportJson())
-                val imported = repo.importJson(app, json, password)
+                val decoded = try {
+                    withContext(Dispatchers.Default) { BackupCodec.decodeMaybeEncrypted(app, json, password) }
+                } catch (e: BackupPasswordException) {
+                    onNeedPassword(e.wrong)
+                    return@launch
+                }
+
+                val preImportName = try {
+                    BackupManager.savePreImport(app, repo.snapshot())
+                } catch (e: Exception) {
+                    error("Gagal membuat backup pengaman, impor dibatalkan: ${e.message ?: "tidak diketahui"}")
+                    return@launch
+                }
+
+                val imported = repo.importDecoded(decoded)
                 BackupManager.applySettings(app, imported.settings)
-                onDone("Kondisi sebelum impor tersimpan di daftar backup (\"Sebelum impor\").")
+
+                val notes = mutableListOf<String>()
+                if (preImportName != null) {
+                    notes += "Kondisi sebelum impor tersimpan di daftar backup (\"Sebelum impor\")."
+                }
+                if (password != null && password.isNotEmpty() && SecureCrypto.isPasswordEncrypted(json)) {
+                    val adopted = withContext(Dispatchers.IO) {
+                        if (BackupManager.hasPassword(app)) null else BackupManager.setPassword(app, password)
+                    }
+                    when (adopted) {
+                        true -> notes += "Password backup disimpan di HP ini, jadi backup berikutnya memakai password yang sama."
+                        false -> notes += "Password backup tidak bisa disimpan di HP ini. Atur password di Backup & Restore agar backup berikutnya portabel."
+                        null -> {}
+                    }
+                }
+                onDone(notes.joinToString(" "))
             } catch (e: Exception) {
                 error(e.message ?: "Gagal mengimpor backup")
+            } finally {
+                password?.fill('\u0000')
             }
         }
     }

@@ -468,7 +468,7 @@ fun SettingsScreen(
 
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "PIN tidak bisa dipulihkan. Jika lupa, satu-satunya cara adalah menghapus data aplikasi lalu restore dari backup.",
+                        "PIN tidak bisa dipulihkan. Jika lupa, satu-satunya cara adalah menghapus data aplikasi lalu pulihkan dari backup (butuh password backup).",
                         color = Muted,
                         fontSize = 12.sp
                     )
@@ -479,9 +479,9 @@ fun SettingsScreen(
                 SettingsSection(icon = Icons.Filled.Backup, title = "Backup & restore") {
                     Text(
                         "Backup otomatis, daftar backup per tanggal, dan restore. " +
-                            "File backup dienkripsi AES-256-GCM dengan kunci perangkat. " +
-                            "Database dilindungi SQLCipher. Backup perangkat hanya bisa " +
-                            "di-restore di perangkat yang sama; untuk pindah perangkat gunakan export ber-password.",
+                            "Database dilindungi SQLCipher. Atur password backup agar file backup (AES-256-GCM) " +
+                            "bisa dipulihkan di HP lain atau setelah install ulang. Tanpa password backup, file " +
+                            "hanya bisa dibuka di HP ini. Password tidak bisa dipulihkan, jadi simpan baik-baik.",
                         color = Muted,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(bottom = 10.dp)

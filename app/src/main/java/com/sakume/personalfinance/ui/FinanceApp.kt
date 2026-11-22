@@ -29,6 +29,7 @@ import com.sakume.personalfinance.data.BackupManager
 import com.sakume.personalfinance.data.GOAL_CATEGORIES
 import com.sakume.personalfinance.data.HOLDING_TYPES
 import com.sakume.personalfinance.ui.components.AccountPickerDialog
+import com.sakume.personalfinance.ui.components.BackupPasswordDialog
 import com.sakume.personalfinance.ui.components.InvestmentTransferDialog
 import com.sakume.personalfinance.ui.components.WeeklyScheduleDialog
 import com.sakume.personalfinance.ui.components.CashTransferDialog
@@ -49,7 +50,9 @@ import com.sakume.personalfinance.ui.screens.InvestmentScreen
 import com.sakume.personalfinance.ui.screens.SettingsScreen
 import com.sakume.personalfinance.ui.theme.SakuMeTheme
 import com.sakume.personalfinance.ui.theme.Paper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -97,6 +100,9 @@ fun FinanceApp(
     var error by remember { mutableStateOf("") }
     var importResult by remember { mutableStateOf("") }
     var backupRefresh by remember { mutableStateOf(0) }
+    var pendingRestoreText by remember { mutableStateOf<String?>(null) }
+    var pwError by remember { mutableStateOf<String?>(null) }
+    var shareAfterPassword by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val investGoals = investments.filter { !it.archived && it.isGoal }
@@ -139,8 +145,12 @@ fun FinanceApp(
         scope.launch {
             try {
                 val text = vm.exportJson()
-                val file = File(context.cacheDir, "sakume_backup_${System.currentTimeMillis()}.json")
-                file.writeText(text)
+                val file = withContext(Dispatchers.IO) {
+                    context.cacheDir.listFiles { f ->
+                        f.isFile && f.name.startsWith("sakume_backup_") && f.name.endsWith(".json")
+                    }?.forEach { it.delete() }
+                    File(context.cacheDir, "sakume_backup_${System.currentTimeMillis()}.json").also { it.writeText(text) }
+                }
                 val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "application/json"
@@ -167,14 +177,28 @@ fun FinanceApp(
         vm.processDueSchedules { result -> Notify.scheduleResult(context, result) }
     }
 
-    fun restoreFromText(text: String, legacy: Boolean) {
+    fun restoreFromText(text: String, legacy: Boolean, password: CharArray? = null) {
         vm.importJson(
             json = text,
+            password = password,
             onDone = { note ->
+                pendingRestoreText = null
+                pwError = null
+                if (dialog == "enterbackuppw") dialog = ""
                 backupRefresh++
-                importResult = (if (legacy) "Data lama berhasil diimpor. " else "Backup berhasil dipulihkan. ") + note
+                importResult = ((if (legacy) "Data lama berhasil diimpor. " else "Backup berhasil dipulihkan. ") + note).trim()
             },
-            error = { err -> importResult = "Gagal mengimpor: $err" }
+            error = { err ->
+                pendingRestoreText = null
+                pwError = null
+                if (dialog == "enterbackuppw") dialog = ""
+                importResult = "Gagal mengimpor: $err"
+            },
+            onNeedPassword = { wrong ->
+                pendingRestoreText = text
+                pwError = if (wrong) "Password salah (atau file backup rusak). Coba lagi." else null
+                dialog = "enterbackuppw"
+            }
         )
     }
 
@@ -206,6 +230,7 @@ fun FinanceApp(
                     backupRefresh++
                     importResult = when {
                         r.status == BackupManager.Status.FAILED -> "Folder dipilih, tetapi backup gagal: ${r.message}"
+                        r.status == BackupManager.Status.SKIPPED -> "Folder dipilih. Daftar backup di folder akan muncul di bawah."
                         r.folderError != null -> r.folderError ?: ""
                         else -> "Folder dipilih. Backup tersalin ke folder tersebut."
                     }
@@ -263,7 +288,20 @@ fun FinanceApp(
                         BackupScreen(
                             refreshKey = backupRefresh,
                             onBack = { subScreen = null; historyAccountId = null },
-                            onExport = { shareBackup() },
+                            onExport = {
+                                if (BackupManager.hasPassword(context)) {
+                                    shareBackup()
+                                } else {
+                                    shareAfterPassword = true
+                                    pwError = null
+                                    dialog = "setbackuppw"
+                                }
+                            },
+                            onSetPassword = {
+                                shareAfterPassword = false
+                                pwError = null
+                                dialog = "setbackuppw"
+                            },
                             onImport = { importLauncher.launch(arrayOf("application/json", "text/plain", "text/*", "*/*")) },
                             onBackupNow = {
                                 vm.backupNow { r ->
@@ -458,6 +496,80 @@ fun FinanceApp(
         }
 
         when {
+            dialog == "setbackuppw" -> BackupPasswordDialog(
+                title = "Atur password backup",
+                detail = if (shareAfterPassword)
+                    "Untuk membagikan backup, atur dulu password backup. File ekspor hanya bisa dibuka dengan " +
+                        "password ini, di HP mana pun."
+                else
+                    "Password ini dipakai untuk semua backup berikutnya (otomatis maupun ekspor), supaya bisa " +
+                        "dipulihkan di HP lain atau setelah install ulang. Backup yang dibuat sebelum password " +
+                        "diganti tetap memakai password lamanya.",
+                confirmField = true,
+                errorText = pwError,
+                actionLabel = "Simpan",
+                onDismiss = { dialog = ""; pwError = null; shareAfterPassword = false },
+                onSubmit = { pw ->
+                    val share = shareAfterPassword
+                    dialog = ""
+                    pwError = null
+                    scope.launch {
+                        val saved = withContext(Dispatchers.IO) { BackupManager.setPassword(context, pw) }
+                        pw.fill('\u0000')
+                        if (!saved) {
+                            pwError = "Penyimpanan aman di HP ini tidak tersedia, password tidak tersimpan."
+                            dialog = "setbackuppw"
+                            return@launch
+                        }
+                        val r = BackupManager.runBackup(context, force = true, source = "manual")
+                        val up = BackupManager.upgradeLegacyBackups(context)
+                        backupRefresh++
+                        val parts = mutableListOf("Password backup diatur.")
+                        var problem = false
+                        when (r.status) {
+                            BackupManager.Status.SAVED ->
+                                if (r.folderError != null) {
+                                    problem = true
+                                    parts += "Backup baru tersimpan di app, tetapi folder gagal: ${r.folderError}"
+                                } else {
+                                    parts += "Backup baru dengan password sudah dibuat."
+                                }
+                            BackupManager.Status.SKIPPED -> parts += r.message
+                            BackupManager.Status.FAILED -> {
+                                problem = true
+                                parts += "Backup baru gagal: ${r.message}"
+                            }
+                        }
+                        if (up.upgraded > 0) parts += "${up.upgraded} backup lama kini dikunci dengan password."
+                        if (up.failed > 0) {
+                            problem = true
+                            parts += "${up.failed} file backup lama tidak bisa diamankan (dienkripsi kunci HP/instalasi lain, atau rusak)."
+                        }
+                        if (share) {
+                            shareAfterPassword = false
+                            if (problem) importResult = parts.joinToString(" ")
+                            shareBackup()
+                        } else {
+                            importResult = parts.joinToString(" ")
+                        }
+                    }
+                }
+            )
+            dialog == "enterbackuppw" -> BackupPasswordDialog(
+                title = "Backup dilindungi password",
+                detail = "Password backup di HP ini belum ada atau tidak cocok dengan file ini. " +
+                    "Masukkan password backup yang dipakai saat file ini dibuat.",
+                confirmField = false,
+                errorText = pwError,
+                actionLabel = "Pulihkan",
+                onDismiss = { dialog = ""; pwError = null; pendingRestoreText = null },
+                onSubmit = { pw ->
+                    val text = pendingRestoreText
+                    dialog = ""
+                    pwError = null
+                    if (text != null) restoreFromText(text, false, pw) else pw.fill('\u0000')
+                }
+            )
             dialog == "account" -> FormDialog(
                 title = "Tambah rekening",
                 fields = listOf("Nama rekening", "Saldo awal"),

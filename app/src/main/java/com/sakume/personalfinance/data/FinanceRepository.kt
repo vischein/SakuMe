@@ -978,6 +978,8 @@ class FinanceRepository(private val db: AppDatabase) {
         password: CharArray? = null
     ): BackupData = importJsonDecoded(BackupCodec.decodeMaybeEncrypted(context, json, password))
 
+    suspend fun importDecoded(decoded: BackupData): BackupData = importJsonDecoded(decoded)
+
     private suspend fun importJsonDecoded(decoded: BackupData): BackupData = db.withTransaction {
         val data = normalizeBills(normalizeDebts(decoded))
         validateBackup(data)
