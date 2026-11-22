@@ -26,11 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Red
 
-/**
- * Logo provider tanpa “box luar” ekstra.
- * Jika drawable ada: gambar mengisi penuh ukuran [size] (Crop).
- * Jika tidak: inisial + warna brand.
- */
+
 @Composable
 fun ProviderLogo(
     provider: String,

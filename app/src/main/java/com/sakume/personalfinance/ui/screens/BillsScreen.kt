@@ -2,13 +2,11 @@ package com.sakume.personalfinance.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,7 +30,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -45,10 +42,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -62,10 +57,9 @@ import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.data.AccountEntity
 import com.sakume.personalfinance.data.BillEntity
 import com.sakume.personalfinance.ui.components.ActionChip
+import com.sakume.personalfinance.ui.components.BillTicketCard
 import com.sakume.personalfinance.ui.components.EmptyHint
-import com.sakume.personalfinance.ui.components.ProviderLogo
 import com.sakume.personalfinance.ui.components.SegmentedChips
-import com.sakume.personalfinance.ui.components.providerStyle
 import com.sakume.personalfinance.ui.daysUntilDue
 import com.sakume.personalfinance.ui.dueInLabel
 import com.sakume.personalfinance.ui.formatDate
@@ -419,7 +413,6 @@ private fun HeroPill(text: String, bg: Color, fg: Color) {
 }
 
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BillCard(
     bill: BillEntity,
@@ -429,213 +422,27 @@ private fun BillCard(
     onToggle: () -> Unit
 ) {
     val overdue = urgency(bill) == "Overdue"
-    val style = remember(bill.provider) { providerStyle(bill.provider) }
     val haptics = LocalHapticFeedback.current
-    val shape = RoundedCornerShape(22.dp)
-    val borderColor = when {
-        selected -> Ink
-        overdue -> Red.copy(alpha = 0.35f)
-        else -> Hairline
-    }
-    val tint = if (overdue) Red.copy(alpha = 0.08f) else style.fg.copy(alpha = 0.10f)
 
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(CardBg)
-            .border(if (selected) 1.5.dp else 0.dp, borderColor, shape)
-            .combinedClickable(
-                onClickLabel = if (selecting) "Pilih tagihan" else null,
-                onClick = { if (selecting) onToggle() },
-                onLongClickLabel = "Pilih tagihan",
-                onLongClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onToggle()
-                }
-            )
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .background(Brush.horizontalGradient(listOf(tint, Color.Transparent)))
-                .padding(14.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ProviderLogo(provider = bill.provider, overdue = overdue)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        bill.provider,
-                        fontWeight = FontWeight.Bold,
-                        color = Ink,
-                        fontSize = 15.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        bill.itemName,
-                        color = Muted,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                if (selecting) {
-                    SelectCheck(selected)
-                } else {
-                    Text(
-                        dueInLabel(bill.dueDateMillis),
-                        color = if (overdue) Red else Ink,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(if (overdue) RedSoft else Color.White.copy(alpha = 0.75f))
-                            .border(0.5.dp, if (overdue) Color.Transparent else Hairline, CircleShape)
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
-                    )
-                }
-            }
-            if (bill.tenorMonths > 1) {
-                Spacer(Modifier.height(12.dp))
-                InstallmentBar(bill.installmentIndex, bill.tenorMonths, overdue)
-            }
+    BillTicketCard(
+        provider = bill.provider,
+        subtitle = bill.itemName,
+        dayLabel = dueInLabel(bill.dueDateMillis),
+        overdue = overdue,
+        amountText = rupiah(bill.amount),
+        dueDateText = formatDate(bill.dueDateMillis),
+        installmentIndex = bill.installmentIndex,
+        installmentTenor = bill.tenorMonths,
+        selecting = selecting,
+        selected = selected,
+        onAction = onPay,
+        onClick = { if (selecting) onToggle() },
+        onLongClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            onToggle()
         }
-
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .offset(x = (-7).dp)
-                    .size(14.dp)
-                    .clip(CircleShape)
-                    .background(Paper)
-            )
-            DashedLine(Modifier.weight(1f))
-            Box(
-                Modifier
-                    .offset(x = 7.dp)
-                    .size(14.dp)
-                    .clip(CircleShape)
-                    .background(Paper)
-            )
-        }
-
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Jatuh tempo · ${formatDate(bill.dueDateMillis)}",
-                    color = if (overdue) Red else Muted,
-                    fontSize = 11.sp,
-                    fontWeight = if (overdue) FontWeight.SemiBold else FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    rupiah(bill.amount),
-                    color = if (overdue) Red else Ink,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    softWrap = false
-                )
-            }
-            if (!selecting) {
-                Spacer(Modifier.width(10.dp))
-                Row(
-                    Modifier
-                        .clip(CircleShape)
-                        .background(Brush.horizontalGradient(listOf(Ink, Panel)))
-                        .clickable(onClickLabel = "Bayar ${bill.provider}", onClick = onPay)
-                        .padding(horizontal = 18.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Filled.Payments, null, tint = Color.White, modifier = Modifier.size(15.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Bayar", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
-    }
+    )
 }
-
-@Composable
-private fun SelectCheck(selected: Boolean) {
-    Box(
-        Modifier
-            .size(24.dp)
-            .clip(CircleShape)
-            .background(if (selected) Ink else Color.Transparent)
-            .border(1.5.dp, if (selected) Ink else Ink.copy(alpha = 0.25f), CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        if (selected) {
-            Icon(Icons.Filled.Check, contentDescription = "Terpilih", tint = Color.White, modifier = Modifier.size(14.dp))
-        }
-    }
-}
-
-@Composable
-private fun InstallmentBar(index: Int, tenor: Int, overdue: Boolean) {
-    val fill = if (overdue) Red else Ink
-    val track = Ink.copy(alpha = 0.10f)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (tenor <= 12) {
-            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                repeat(tenor) { i ->
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .height(5.dp)
-                            .clip(CircleShape)
-                            .background(if (i < index) fill else track)
-                    )
-                }
-            }
-        } else {
-            val progress = (index.toFloat() / tenor).coerceIn(0f, 1f)
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(5.dp)
-                    .clip(CircleShape)
-                    .background(track)
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxWidth(progress)
-                        .fillMaxHeight()
-                        .background(fill, CircleShape)
-                )
-            }
-        }
-        Spacer(Modifier.width(10.dp))
-        Text("$index/$tenor", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-    }
-}
-
-@Composable
-private fun DashedLine(modifier: Modifier = Modifier) {
-    val color = Ink.copy(alpha = 0.18f)
-    Canvas(modifier.height(1.dp)) {
-        drawLine(
-            color = color,
-            start = Offset(0f, size.height / 2f),
-            end = Offset(size.width, size.height / 2f),
-            strokeWidth = 1.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()))
-        )
-    }
-}
-
-
 
 @Composable
 private fun PaidRow(b: BillEntity, onUnpay: () -> Unit) {

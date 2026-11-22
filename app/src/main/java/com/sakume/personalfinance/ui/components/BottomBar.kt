@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CallReceived
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Savings
@@ -80,21 +83,22 @@ private data class BottomNavItem(
     val outlined: ImageVector,
 )
 
-
-private data class QuickAction(val key: String, val label: String, val icon: ImageVector)
-
-private val quickActions = listOf(
-    QuickAction("transaction", "Transaksi", Icons.Filled.Add),
-    QuickAction("transfer", "Transfer", Icons.Filled.SwapHoriz),
-    QuickAction("bill", "Tagihan", Icons.AutoMirrored.Filled.ReceiptLong),
-    QuickAction("investment", "Investasi", Icons.AutoMirrored.Filled.TrendingUp),
-    QuickAction("goal", "Tabungan", Icons.Filled.Savings),
-    QuickAction("debt", "Piutang / Utang", Icons.Filled.SwapVert),
+private data class QuickAction(
+    val key: String,
+    val label: String,
+    val icon: ImageVector,
 )
 
-
-
-
+private val quickActions =
+    listOf(
+        QuickAction("transaction", "Transaksi", Icons.Filled.Add),
+        QuickAction("cash", "Tarik Tunai", Icons.Filled.CallReceived),
+        QuickAction("transfer", "Transfer", Icons.Filled.SwapHoriz),
+        QuickAction("bill", "Tagihan", Icons.AutoMirrored.Filled.ReceiptLong),
+        QuickAction("investment", "Investasi", Icons.AutoMirrored.Filled.TrendingUp),
+        QuickAction("goal", "Tabungan", Icons.Filled.Savings),
+        QuickAction("debt", "Piutang / Utang", Icons.Filled.SwapVert),
+    )
 
 @Composable
 fun SakuMeBottomBar(
@@ -113,13 +117,15 @@ fun SakuMeBottomBar(
                 filled = Icons.AutoMirrored.Filled.ReceiptLong,
                 outlined = Icons.AutoMirrored.Outlined.ReceiptLong,
             ),
-            
             when (investSegment) {
                 0 -> BottomNavItem("Invest", "Tabungan", Icons.Filled.Savings, Icons.Outlined.Savings)
-                1 -> BottomNavItem(
-                    "Invest", "Investasi",
-                    Icons.AutoMirrored.Filled.TrendingUp, Icons.AutoMirrored.Outlined.TrendingUp,
-                )
+                1 ->
+                    BottomNavItem(
+                        "Invest",
+                        "Investasi",
+                        Icons.AutoMirrored.Filled.TrendingUp,
+                        Icons.AutoMirrored.Outlined.TrendingUp,
+                    )
                 else -> BottomNavItem("Invest", "Piutang", Icons.Filled.SwapVert, Icons.Outlined.SwapVert)
             },
         )
@@ -145,7 +151,11 @@ fun SakuMeBottomBar(
 }
 
 @Composable
-private fun RowScope.NavItem(item: BottomNavItem, isSelected: Boolean, onClick: () -> Unit) {
+private fun RowScope.NavItem(
+    item: BottomNavItem,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+) {
     NavigationBarItem(
         selected = isSelected,
         onClick = onClick,
@@ -191,7 +201,6 @@ private fun RowScope.QuickAddSlot(
     Box(
         Modifier
             .weight(0.9f)
-            
             .heightIn(min = 80.dp)
             .onSizeChanged { slotHeightPx = it.height },
         contentAlignment = Alignment.Center,
@@ -205,8 +214,7 @@ private fun RowScope.QuickAddSlot(
                     shape = CircleShape,
                     ambientColor = Ink.copy(alpha = 0.25f),
                     spotColor = Ink.copy(alpha = 0.40f),
-                )
-                .clip(CircleShape)
+                ).clip(CircleShape)
                 .background(Ink)
                 .clickable(
                     onClickLabel = if (open) "Tutup menu tambah" else "Buka menu tambah",
@@ -219,9 +227,10 @@ private fun RowScope.QuickAddSlot(
                 Icons.Filled.Add,
                 contentDescription = "Tambah",
                 tint = Color.White,
-                modifier = Modifier
-                    .size(28.dp)
-                    .graphicsLayer { rotationZ = rotation },
+                modifier =
+                    Modifier
+                        .size(28.dp)
+                        .graphicsLayer { rotationZ = rotation },
             )
         }
         if (open) {
@@ -246,36 +255,30 @@ private fun QuickMenu(onPick: (String) -> Unit) {
     val shape = RoundedCornerShape(24.dp)
     AnimatedVisibility(
         visibleState = state,
-        enter = fadeIn(tween(160)) +
-            scaleIn(
-                initialScale = 0.88f,
-                transformOrigin = TransformOrigin(0.5f, 1f),
-                animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMedium),
-            ) +
-            slideInVertically(tween(200)) { it / 8 },
+        enter =
+            fadeIn(tween(160)) +
+                scaleIn(
+                    initialScale = 0.88f,
+                    transformOrigin = TransformOrigin(0.5f, 1f),
+                    animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMedium),
+                ) +
+                slideInVertically(tween(200)) { it / 8 },
     ) {
         Column(
             Modifier
-                .width(304.dp)
+                .width(312.dp)
                 .clip(shape)
                 .background(CardBg)
                 .border(1.dp, Ink.copy(alpha = 0.10f), shape)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                "Tambah baru",
-                color = Muted,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 4.dp, top = 2.dp),
-            )
             quickActions.chunked(2).forEach { pair ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val isSingleItem = pair.size == 1
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isSingleItem) Arrangement.Center else Arrangement.spacedBy(8.dp)) {
                     pair.forEach { action ->
-                        QuickTile(action, Modifier.weight(1f)) { onPick(action.key) }
+                        QuickTile(action, Modifier.weight(1f), isSingleItem = isSingleItem) { onPick(action.key) }
                     }
-                    if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
         }
@@ -283,29 +286,36 @@ private fun QuickMenu(onPick: (String) -> Unit) {
 }
 
 @Composable
-private fun QuickTile(action: QuickAction, modifier: Modifier, onClick: () -> Unit) {
+private fun QuickTile(
+    action: QuickAction,
+    modifier: Modifier,
+    isSingleItem: Boolean = false,
+    onClick: () -> Unit,
+) {
     val shape = RoundedCornerShape(16.dp)
     Row(
         modifier
+            .height(54.dp)
             .clip(shape)
             .background(Paper)
             .clickable(onClickLabel = "Tambah ${action.label}", role = Role.Button, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 10.dp),
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (isSingleItem) Arrangement.Center else Arrangement.Start,
     ) {
         Box(
-            Modifier.size(34.dp).background(Ink, CircleShape),
+            Modifier.size(32.dp).background(Ink, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(action.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
         Text(
             action.label,
             color = Ink,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
     }
