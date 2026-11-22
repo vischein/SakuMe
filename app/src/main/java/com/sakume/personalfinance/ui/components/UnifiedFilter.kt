@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -59,35 +60,84 @@ fun UnifiedFilterControl(
     modifier: Modifier = Modifier,
     onApply: (List<Int>) -> Unit,
     onReset: (() -> Unit)? = null,
-    resetLabel: String = "Reset"
+    resetLabel: String = "Reset",
+    active: Boolean = false
 ) {
     var expanded by remember { mutableStateOf(false) }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(CardBg)
-            .border(1.dp, Ink.copy(alpha = 0.07f), RoundedCornerShape(16.dp))
-            .clickable { expanded = true }
-            .padding(horizontal = 14.dp, vertical = 13.dp),
+            .clickable(onClickLabel = "Atur filter") { expanded = true }
+            .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Ink.copy(alpha = 0.06f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Filled.FilterList, contentDescription = null, tint = Ink, modifier = Modifier.size(19.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "FILTER",
+                color = Muted,
+                fontSize = 10.sp,
+                lineHeight = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.sp
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                title,
+                color = Ink,
+                fontSize = 16.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(1.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.FilterList,
+                    contentDescription = null,
+                    tint = Muted,
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    summary,
+                    color = Muted,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
-        Column(Modifier.weight(1f).padding(start = 11.dp)) {
-            Text(title, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(2.dp))
-            Text(summary, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.width(12.dp))
+        Box(contentAlignment = Alignment.TopEnd) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(if (active) Ink else Ink.copy(alpha = 0.06f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Tune,
+                    contentDescription = "Atur filter",
+                    tint = if (active) Color.White else Ink,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            if (active) {
+                Box(
+                    Modifier
+                        .size(10.dp)
+                        .background(CardBg, CircleShape)
+                        .padding(2.dp)
+                        .background(Color(0xFFFF3B30), CircleShape)
+                )
+            }
         }
-        Icon(Icons.Filled.Tune, contentDescription = "Atur filter", tint = Muted, modifier = Modifier.size(20.dp))
     }
 
     if (expanded) {

@@ -49,6 +49,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -272,7 +279,9 @@ fun TransactionRow(
     grouped: Boolean = false,
     showDate: Boolean = true,
     onLongPress: (() -> Unit)? = null,
-    hideAmount: Boolean = false
+    hideAmount: Boolean = false,
+    selectionShape: Shape? = null,
+    selectedAbove: Boolean = false
 ) {
     val isTransfer = t.type == "transfer_in" || t.type == "transfer_out"
     val isIn = t.type == "income" || t.type == "transfer_in"
@@ -334,32 +343,28 @@ fun TransactionRow(
             .fillMaxWidth()
             .then(if (grouped) Modifier else Modifier.clip(RoundedCornerShape(14.dp)).background(CardBg))
             .then(tapModifier)
-            .padding(horizontal = 4.dp, vertical = 2.dp)
-            .border(1.5.dp, borderColor, RoundedCornerShape(14.dp))
-            .padding(horizontal = 8.dp, vertical = if (grouped) 10.dp else 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        AnimatedVisibility(
-            visible = selectionMode,
-            enter = fadeIn(tween(150)) + expandHorizontally(tween(200, easing = FastOutSlowInEasing)),
-            exit = fadeOut(tween(100)) + shrinkHorizontally(tween(200, easing = FastOutSlowInEasing))
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .background(if (selected) Ink else Color.White)
-                        .border(1.5.dp, if (selected) Ink else Color(0xFFCCCCCC), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (selected) {
-                        Text("✓", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            .then(if (selectionShape == null) Modifier.padding(horizontal = 4.dp, vertical = 2.dp) else Modifier)
+            .then(
+                if (selectionShape == null) Modifier.border(1.5.dp, borderColor, RoundedCornerShape(14.dp))
+                else Modifier.drawBehind {
+                    if (borderColor.alpha == 0f) return@drawBehind
+                    val sw = 1.5.dp.toPx()
+                    val outline = selectionShape.createOutline(
+                        Size(size.width - sw, size.height - sw), layoutDirection, this
+                    )
+                    clipRect(top = if (selectedAbove) sw else 0f) {
+                        translate(sw / 2, sw / 2) {
+                            drawOutline(outline, borderColor, style = Stroke(width = sw))
+                        }
                     }
                 }
-                Spacer(Modifier.width(10.dp))
-            }
-        }
+            )
+            .padding(
+                horizontal = if (selectionShape == null) 8.dp else 12.dp,
+                vertical = if (selectionShape == null) (if (grouped) 10.dp else 8.dp) else 12.dp
+            ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Box(
             Modifier.size(40.dp).background(soft, CircleShape),
             contentAlignment = Alignment.Center

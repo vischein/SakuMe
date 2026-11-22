@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.SouthWest
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -375,7 +376,7 @@ fun TransactionHistoryScreen(
     val hasActiveControls = period != HistoryPeriod.ALL || typeFilter != HistoryType.ALL || f != null
     val canReset = hasActiveControls || query.isNotBlank()
     val bottomPad by animateDpAsState(if (selectionMode) 104.dp else 24.dp, tween(220), label = "historyBottomPad")
-    val dividerStart by animateDpAsState(if (selectionMode) 96.dp else 64.dp, tween(200), label = "historyDividerStart")
+    val dividerStart = 64.dp
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -432,6 +433,7 @@ fun TransactionHistoryScreen(
                                 typeFilter != HistoryType.ALL -> typeFilter.label
                                 else -> period.label
                             },
+                            active = hasActiveControls,
                             summary = "${if (period == HistoryPeriod.DAY && dayMillis != null) formatDate(dayMillis!!) else period.label}",
                             sections = listOf(
                                 FilterSection(
@@ -508,6 +510,8 @@ fun TransactionHistoryScreen(
                                 selectionMode = selectionMode,
                                 grouped = true,
                                 showDate = false,
+                                selectionShape = cardShape(index, g.items.lastIndex),
+                                selectedAbove = index > 0 && g.items[index - 1].t.id in selectedVisible,
                                 onToggleSelect = {
                                     selected = if (e.t.id in selected) selected - e.t.id else selected + e.t.id
                                 },
@@ -927,15 +931,25 @@ private fun DayHeader(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier
-                        .size(18.dp)
+                        .size(20.dp)
                         .clip(CircleShape)
                         .background(if (checkState == 2) Ink else Color.Transparent)
                         .border(1.5.dp, if (checkState == 0) Color(0xFFCCCCCC) else Ink, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     when (checkState) {
-                        2 -> Text("✓", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        1 -> Box(Modifier.size(width = 8.dp, height = 2.dp).background(Ink))
+                        2 -> Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        1 -> Box(
+                            Modifier
+                                .size(width = 8.dp, height = 2.dp)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(Ink)
+                        )
                     }
                 }
                 Spacer(Modifier.width(8.dp))
