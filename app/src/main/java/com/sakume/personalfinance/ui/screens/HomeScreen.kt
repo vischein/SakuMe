@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SouthWest
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.TrendingUp
@@ -304,6 +305,7 @@ fun HomeScreen(
                     hidden = hideBalance,
                     onToggleHidden = toggleHidden,
                     onAction = onAction,
+                    onOpenSettings = onOpenSettings,
                     onAmountBottom = { amountBottom = it }
                 )
             }
@@ -580,6 +582,7 @@ private fun TopBlock(
     hidden: Boolean,
     onToggleHidden: () -> Unit,
     onAction: (String) -> Unit,
+    onOpenSettings: () -> Unit,
     onAmountBottom: (Float) -> Unit
 ) {
     val toggleLabel = if (hidden) "Tampilkan nominal" else "Sembunyikan nominal"
@@ -595,13 +598,36 @@ private fun TopBlock(
             .padding(horizontal = 20.dp)
             .padding(top = 10.dp, bottom = 18.dp)
     ) {
-        Text(
-            "SakuMe",
-            color = Color.White,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "SakuMe",
+                color = Color.White,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
+            )
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .pressable(
+                        description = "Pengaturan",
+                        onClickLabel = "Buka pengaturan",
+                        pressedScale = 0.92f,
+                        onClick = onOpenSettings
+                    )
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.10f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Settings,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.9f),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
         Spacer(Modifier.height(16.dp))
         Text("Total saldo", color = Color.White.copy(alpha = 0.65f), fontSize = 13.sp, maxLines = 1)
         Spacer(Modifier.height(2.dp))
@@ -891,7 +917,7 @@ private fun AccountStrip(
     val count = accounts.size
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val inner = maxWidth - ScreenPad * 2
-        val cardWidth = if (count == 1) inner else (inner * 0.62f).coerceIn(172.dp, 250.dp)
+        val cardWidth = if (count == 1) inner else (inner * 0.58f).coerceIn(172.dp, 250.dp)
         LazyRow(
             contentPadding = PaddingValues(horizontal = ScreenPad),
             horizontalArrangement = Arrangement.spacedBy(10.dp)

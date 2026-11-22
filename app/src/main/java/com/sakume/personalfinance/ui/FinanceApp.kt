@@ -46,7 +46,6 @@ import com.sakume.personalfinance.ui.screens.TransactionHistoryScreen
 import com.sakume.personalfinance.ui.screens.BillsScreen
 import com.sakume.personalfinance.ui.screens.HomeScreen
 import com.sakume.personalfinance.ui.screens.InvestmentScreen
-import com.sakume.personalfinance.ui.screens.MoreScreen
 import com.sakume.personalfinance.ui.screens.SettingsScreen
 import com.sakume.personalfinance.ui.theme.SakuMeTheme
 import com.sakume.personalfinance.ui.theme.Paper
@@ -108,7 +107,13 @@ fun FinanceApp(
         val t = requestedTab
         if (t != null) {
             if (t in setOf("Home", "Analisis", "Bills", "Invest", "More")) {
-                tab = t
+                if (t == "More") {
+                    // Tab More dihapus: piutang/utang kini segmen ke-3 di tab Invest
+                    investSegment = 2
+                    tab = "Invest"
+                } else {
+                    tab = t
+                }
                 subScreen = null
                 if (t == "Bills") billsProviderFilter = "Semua"
             }
@@ -218,11 +223,11 @@ fun FinanceApp(
                 SakuMeBottomBar(
                     selected = tab,
                     investSegment = activeInvestSegment,
+                    onQuickAction = { key -> dialog = key },
                     onSelect = { label ->
                         tab = label
                         subScreen = null
                         if (label == "Bills") billsProviderFilter = "Semua"
-                        if (label == "More") debtFilter = "Semua"
                     }
                 )
             },
@@ -363,15 +368,18 @@ fun FinanceApp(
                                     }
                                     action == "more:piutang" -> {
                                         debtFilter = "Piutang"
-                                        tab = "More"
+                                        investSegment = 2
+                                        tab = "Invest"
                                     }
                                     action == "more:utang" -> {
                                         debtFilter = "Utang"
-                                        tab = "More"
+                                        investSegment = 2
+                                        tab = "Invest"
                                     }
                                     else -> dialog = action
                                 }
                             },
+                            onOpenSettings = { subScreen = "settings" },
                             onSeeAllTx = {
                                 
                                 historyAccountId = null
@@ -393,7 +401,8 @@ fun FinanceApp(
                             onOpenDebts = { filter ->
                                 debtFilter = filter
                                 subScreen = null
-                                tab = "More"
+                                investSegment = 2
+                                tab = "Invest"
                             },
                             periodIndex = analyticsPeriodIndex,
                             onPeriodIndexChange = { analyticsPeriodIndex = it },
@@ -403,7 +412,6 @@ fun FinanceApp(
                             bills = bills,
                             accounts = accounts,
                             initialProvider = billsProviderFilter,
-                            onAdd = { dialog = "bill" },
                             onPay = { b -> dialog = "paybill:${b.id}" },
                             onPayMonth = { list -> dialog = "paymany:${list.joinToString(",") { it.id }}" },
                             onDelete = { b -> dialog = "deletebill:${b.id}" },
@@ -427,28 +435,15 @@ fun FinanceApp(
                             onToggleSchedule = { s, on -> vm.setScheduleEnabled(s.id, on) },
                             onDeleteSchedule = { s -> vm.deleteSchedule(s.id) },
                             onEdit = { a -> dialog = "editinvest:${a.id}" },
-                            onDelete = { a -> dialog = "deleteinvest:${a.id}" }
-                        )
-                        else -> MoreScreen(
+                            onDelete = { a -> dialog = "deleteinvest:${a.id}" },
                             debts = debts,
-                            accounts = accounts,
-                            initialDebtFilter = debtFilter,
-                            onAddDebt = { filter ->
-                                debtFilter = filter
-                                dialog = "debt"
-                            },
-                            onPaid = { d -> dialog = "paydebt:${d.id}" },
-                            onUnpaid = { d -> vm.markDebtUnpaid(d) { error = it } },
+                            debtFilter = debtFilter,
+                            onDebtFilterChange = { debtFilter = it },
+                            onAddDebt = { dialog = "debt" },
+                            onPaidDebt = { d -> dialog = "paydebt:${d.id}" },
+                            onUnpaidDebt = { d -> vm.markDebtUnpaid(d) { error = it } },
                             onEditDebt = { d -> dialog = "editdebt:${d.id}" },
-                            onDeleteDebt = { d -> dialog = "deletedebt:${d.id}" },
-                            onOpenSettings = { subScreen = "settings" },
-                            onOpenAccounts = { subScreen = "manageAccounts" },
-                            onOpenHistory = {
-                                historyAccountId = null
-                                subScreen = "txHistory"
-                            },
-                            onOpenBackup = { subScreen = "backup" },
-                            onDebtFilterChange = { debtFilter = it }
+                            onDeleteDebt = { d -> dialog = "deletedebt:${d.id}" }
                         )
                     }
                 }

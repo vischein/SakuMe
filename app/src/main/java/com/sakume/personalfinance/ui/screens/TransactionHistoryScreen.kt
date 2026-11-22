@@ -432,7 +432,7 @@ fun TransactionHistoryScreen(
                                 typeFilter != HistoryType.ALL -> typeFilter.label
                                 else -> period.label
                             },
-                            summary = "${accountName ?: "Semua rekening"}, ${if (period == HistoryPeriod.DAY && dayMillis != null) formatDate(dayMillis!!) else period.label}, ${typeFilter.label}",
+                            summary = "${if (period == HistoryPeriod.DAY && dayMillis != null) formatDate(dayMillis!!) else period.label}",
                             sections = listOf(
                                 FilterSection(
                                     title = "Periode",

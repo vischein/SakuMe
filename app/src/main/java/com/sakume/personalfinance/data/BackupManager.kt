@@ -20,6 +20,11 @@ object BackupManager {
     private const val PREFIX_PRE_IMPORT = "sakume_sebelum_impor_"
     private const val KEEP_PRE_IMPORT = 3
 
+    // Pangkas otomatis menurut umur: hanya saat ada backup harian BARU dan jumlah backup harian > 4.
+    // Yang dihapus = lebih tua dari 3 hari, terlama dulu, dan selalu menyisakan minimal 4 backup.
+    private const val AGE_PRUNE_MIN_COUNT = 4
+    private const val AGE_PRUNE_MAX_DAYS = 3L
+
     private val mutex = Mutex()
 
     enum class Kind { DAILY, PRE_IMPORT }
@@ -103,13 +108,18 @@ object BackupManager {
                     check(back.copy(meta = null, settings = null) == data) { "Verifikasi backup gagal" }
 
                     val name = PREFIX_DAILY + dayStamp(now) + ".json"
+                    val isNewBackup = !File(dir(context), name).exists()
                     writeAtomic(File(dir(context), name), json)
                     pruneInternal(context)
+                    if (isNewBackup) pruneInternalByAge(context, now)
 
                     var folderError: String? = null
                     AppPrefs.autoBackupFolder(context)?.let { folder ->
                         folderError = copyToFolder(context, folder, name, json)
-                        if (folderError == null) pruneFolder(context, folder)
+                        if (folderError == null) {
+                            pruneFolder(context, folder)
+                            if (isNewBackup) pruneFolderByAge(context, folder, now)
+                        }
                     }
 
                     if (folderError == null) AppPrefs.setAutoBackupState(context, hash, now)
@@ -262,6 +272,56 @@ object BackupManager {
         files.filter { kindOf(it.name) == Kind.PRE_IMPORT }
             .sortedByDescending { it.name }
             .drop(KEEP_PRE_IMPORT).forEach { it.delete() }
+    }
+
+    /** Umur backup harian dalam hari kalender (dari tanggal di nama file); null bila nama tak terbaca. */
+    private fun ageInDays(name: String, nowMillis: Long): Long? {
+        val stamp = name.removePrefix(PREFIX_DAILY).removeSuffix(".json")
+        val dayStart = try {
+            SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(stamp)?.time
+        } catch (_: Exception) {
+            null
+        } ?: return null
+        val today = java.util.Calendar.getInstance().apply {
+            timeInMillis = nowMillis
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        return Math.round((today - dayStart) / 86_400_000.0)
+    }
+
+    private fun namesToPruneByAge(names: List<String>, nowMillis: Long): Set<String> {
+        if (names.size <= AGE_PRUNE_MIN_COUNT) return emptySet()
+        var remaining = names.size
+        val doomed = mutableSetOf<String>()
+        for (n in names.sorted()) {
+            if (remaining <= AGE_PRUNE_MIN_COUNT) break
+            val age = ageInDays(n, nowMillis) ?: continue
+            if (age > AGE_PRUNE_MAX_DAYS) {
+                doomed += n
+                remaining--
+            }
+        }
+        return doomed
+    }
+
+    private fun pruneInternalByAge(context: Context, nowMillis: Long) {
+        val files = dir(context).listFiles()?.filter { it.isFile && kindOf(it.name) == Kind.DAILY } ?: return
+        val doomed = namesToPruneByAge(files.map { it.name }, nowMillis)
+        files.filter { it.name in doomed }.forEach { it.delete() }
+    }
+
+    private fun pruneFolderByAge(context: Context, folderUri: String, nowMillis: Long) {
+        try {
+            val tree = DocumentFile.fromTreeUri(context, Uri.parse(folderUri)) ?: return
+            val docs = tree.listFiles()
+                .filter { it.isFile && it.name?.let { n -> kindOf(n) == Kind.DAILY } == true }
+            val doomed = namesToPruneByAge(docs.mapNotNull { it.name }, nowMillis)
+            docs.filter { it.name in doomed }.forEach { it.delete() }
+        } catch (_: Exception) {
+        }
     }
 
     private fun copyToFolder(context: Context, folderUri: String, name: String, json: String): String? {
