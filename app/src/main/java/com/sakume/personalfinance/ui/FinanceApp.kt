@@ -486,7 +486,7 @@ fun FinanceApp(
                 requiredFields = setOf(1),
                 onDismiss = { dialog = "" }
             ) { v ->
-                val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
+                val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
                 val type = v.getOrElse(2) { "expense" }
                 val accName = v.getOrElse(3) { accounts.firstOrNull()?.name.orEmpty() }
                 val acc = accounts.firstOrNull { it.name == accName }
@@ -520,7 +520,7 @@ fun FinanceApp(
                 extraOptionLabel = "Ke rekening",
                 onDismiss = { dialog = "" }
             ) { v ->
-                val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
+                val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
                 val from = accounts.firstOrNull { it.name == v.getOrElse(2) { "" } }
                 val to = accounts.firstOrNull { it.name == v.getOrElse(3) { "" } }
                 when {
@@ -883,7 +883,7 @@ fun FinanceApp(
                 initialTertiaryIndex = 9,
                 onDismiss = { dialog = "" }
             ) { v ->
-                val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
+                val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
                 val freq = v.firstOrNull { it in listOf("daily", "biweekly", "monthly") } ?: "monthly"
                 val acc = accounts.firstOrNull { a -> v.any { it == a.name } }
                 val hour = v.mapNotNull { it.toIntOrNull() }.firstOrNull { it in 0..23 } ?: 9
@@ -921,7 +921,7 @@ fun FinanceApp(
                     initialTertiaryIndex = s?.hourOfDay?.coerceIn(0, 23) ?: 9,
                     onDismiss = { dialog = "" }
                 ) { v ->
-                    val amount = (v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
+                    val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
                     val freq = v.firstOrNull { it in listOf("daily", "biweekly", "monthly") } ?: "monthly"
                     val acc = accounts.firstOrNull { a -> v.any { it == a.name } }
                     val hour = v.mapNotNull { it.toIntOrNull() }.firstOrNull { it in 0..23 } ?: 9
@@ -1044,7 +1044,7 @@ fun FinanceApp(
                 dueDateLabel = "Jatuh tempo (opsional)",
                 onDismiss = { dialog = "" }
             ) { v ->
-                val amount = (v[2].filter { it.isDigit() }.toLongOrNull() ?: 0L) * AppPrefs.multiplier(AppPrefs.trailingZeros(context))
+                val amount = v[2].filter { it.isDigit() }.toLongOrNull() ?: 0L
                 val type = when (debtFilter) {
                     "Piutang" -> "piutang"
                     "Utang" -> "utang"

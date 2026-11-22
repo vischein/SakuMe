@@ -323,20 +323,20 @@ fun TransactionRow(
         )
         else -> Modifier
     }
-    val selectedBg = if (grouped) Ink.copy(alpha = 0.06f) else Color(0xFFE8E8E8)
-    val rowBg by animateColorAsState(
-        if (selected) selectedBg else if (grouped) Color.Transparent else CardBg,
+    val borderColor by animateColorAsState(
+        if (selected) Ink else Color.Transparent,
         tween(160),
-        label = "txRowBg"
+        label = "txRowBorder"
     )
 
     Row(
         modifier
             .fillMaxWidth()
-            .then(if (grouped) Modifier else Modifier.clip(RoundedCornerShape(14.dp)))
-            .background(rowBg)
+            .then(if (grouped) Modifier else Modifier.clip(RoundedCornerShape(14.dp)).background(CardBg))
             .then(tapModifier)
-            .padding(horizontal = 12.dp, vertical = if (grouped) 12.dp else 10.dp),
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .border(1.5.dp, borderColor, RoundedCornerShape(14.dp))
+            .padding(horizontal = 8.dp, vertical = if (grouped) 10.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         AnimatedVisibility(

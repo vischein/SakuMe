@@ -47,7 +47,6 @@ object BackupManager {
     )
 
     fun currentSettings(context: Context) = BackupSettings(
-        trailingZeros = AppPrefs.trailingZeros(context),
         notificationsEnabled = AppPrefs.notificationsEnabled(context),
         maxCatchupDays = AppPrefs.maxCatchupDays(context),
         billReminderEnabled = AppPrefs.billReminderEnabled(context),
@@ -59,7 +58,6 @@ object BackupManager {
 
     fun applySettings(context: Context, s: BackupSettings?) {
         if (s == null) return
-        s.trailingZeros?.let { AppPrefs.setTrailingZeros(context, it) }
         s.notificationsEnabled?.let { AppPrefs.setNotificationsEnabled(context, it) }
         s.maxCatchupDays?.let { AppPrefs.setMaxCatchupDays(context, it) }
         s.billReminderEnabled?.let { AppPrefs.setBillReminderEnabled(context, it) }

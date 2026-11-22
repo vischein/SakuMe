@@ -5,7 +5,6 @@ import android.content.Context
 object AppPrefs {
     private const val PREF = "sakume_prefs"
 
-    private const val KEY_TRAILING_ZEROS = "trailing_zeros"
     private const val KEY_NOTIFICATIONS = "notifications_enabled"
     private const val KEY_HIDE_HOME_BALANCE = "hide_home_balance"
     private const val KEY_MAX_CATCHUP_DAYS = "max_catchup_days"
@@ -25,35 +24,18 @@ object AppPrefs {
     const val HOME_SECTION_TRANSACTIONS = "transactions"
     const val HOME_SECTION_OTHERS = "others"
 
-    const val DEFAULT_TRAILING_ZEROS = 3
     const val DEFAULT_MAX_CATCHUP_DAYS = 30
     const val DEFAULT_BILL_REMINDER_HOUR = 8
     const val DEFAULT_BACKUP_KEEP = 30
     val REMINDER_HOURS = listOf(6, 7, 8, 9, 12, 18, 20)
     val EARLY_OPTIONS = listOf(0, 1, 3, 7)
     val BACKUP_KEEP_OPTIONS = listOf(7, 14, 30, 60)
-    val OPTIONS = listOf(0, 1, 2, 3, 4, 5, 6)
     val CATCHUP_OPTIONS = listOf(7, 14, 30, 60, 90, 180)
 
     const val MONEY_SCALE_RUPIAH = 1L
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-
-    fun trailingZeros(context: Context): Int =
-        prefs(context).getInt(KEY_TRAILING_ZEROS, DEFAULT_TRAILING_ZEROS).coerceIn(0, 6)
-
-    fun setTrailingZeros(context: Context, n: Int) {
-        prefs(context).edit().putInt(KEY_TRAILING_ZEROS, n.coerceIn(0, 6)).apply()
-    }
-
-    fun multiplier(n: Int): Long {
-        var m = 1L
-        repeat(n.coerceIn(0, 6)) { m *= 10L }
-        return m
-    }
-
-    fun zerosLabel(n: Int): String = if (n <= 0) "Off" else "0".repeat(n)
 
     fun hideHomeBalance(context: Context): Boolean =
         prefs(context).getBoolean(KEY_HIDE_HOME_BALANCE, false)

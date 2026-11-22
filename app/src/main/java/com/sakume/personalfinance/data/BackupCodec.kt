@@ -35,7 +35,7 @@ import java.util.UUID
 )
 
 @Serializable data class BackupSettings(
-    val trailingZeros: Int? = null,
+    val trailingZeros: Int? = null, // usang (fitur 3 nol otomatis kini tetap); dipertahankan agar backup lama tetap terbaca
     val notificationsEnabled: Boolean? = null,
     val maxCatchupDays: Int? = null,
     val billReminderEnabled: Boolean? = null,

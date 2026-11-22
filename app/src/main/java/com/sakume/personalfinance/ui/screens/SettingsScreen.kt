@@ -83,7 +83,6 @@ fun SettingsScreen(
     onDeleteSalary: (SalaryScheduleEntity) -> Unit = {}
 ) {
     val context = LocalContext.current
-    var trailingZeros by remember { mutableStateOf(AppPrefs.trailingZeros(context)) }
     var notifEnabled by remember { mutableStateOf(AppPrefs.notificationsEnabled(context)) }
     var catchupDays by remember { mutableStateOf(AppPrefs.maxCatchupDays(context)) }
     var billReminder by remember { mutableStateOf(AppPrefs.billReminderEnabled(context)) }
@@ -278,32 +277,6 @@ fun SettingsScreen(
                             ) {
                                 catchupDays = d
                                 AppPrefs.setMaxCatchupDays(context, d)
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                SettingsSection(icon = Icons.Filled.Tune, title = "Input nominal") {
-                    Text(
-                        "Jumlah nol otomatis di belakang saat mengisi field Nominal. " +
-                            "Ketik 5 → ${exampleAmount(5, trailingZeros)}. " +
-                            "Pilih Off untuk nominal exact (mis. 5.696).",
-                        color = Muted,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(AppPrefs.OPTIONS.size) { idx ->
-                            val n = AppPrefs.OPTIONS[idx]
-                            val selected = trailingZeros == n
-                            Chip(
-                                label = AppPrefs.zerosLabel(n),
-                                selected = selected
-                            ) {
-                                trailingZeros = n
-                                AppPrefs.setTrailingZeros(context, n)
                             }
                         }
                     }
@@ -658,14 +631,4 @@ private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp)
     )
-}
-
-private fun exampleAmount(prefix: Int, zeros: Int): String {
-    if (zeros <= 0) return "Rp$prefix (exact)"
-    val full = prefix.toString() + "0".repeat(zeros)
-    return try {
-        "Rp" + NumberFormat.getInstance(Locale("id", "ID")).format(full.toLong())
-    } catch (_: Exception) {
-        "Rp$full"
-    }
 }

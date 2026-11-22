@@ -47,6 +47,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -103,24 +107,98 @@ private fun AppBottomSheet(onDismiss: () -> Unit, content: @Composable () -> Uni
     }
 }
 
-private class AutoTrailingZerosTransformation(private val zeroCount: Int) : VisualTransformation {
-    override fun filter(text: AnnotatedString): TransformedText {
-        val digits = text.text.filter { it.isDigit() }
-        if (digits.isEmpty() || zeroCount <= 0) {
-            val shown = if (digits.isEmpty()) "" else formatRibuan(digits)
-            val mapping = object : OffsetMapping {
-                override fun originalToTransformed(offset: Int): Int = shown.length
-                override fun transformedToOriginal(offset: Int): Int = digits.length
-            }
-            return TransformedText(AnnotatedString(shown), mapping)
+private const val AUTO_ZEROS = 3
+private const val AUTO_ZEROS_STR = "000"
+
+@Composable
+private fun moneyFieldColors() = TextFieldDefaults.colors(
+    focusedContainerColor = FieldBg,
+    unfocusedContainerColor = FieldBg,
+    disabledContainerColor = FieldBg,
+    focusedIndicatorColor = Color.Transparent,
+    unfocusedIndicatorColor = Color.Transparent,
+    disabledIndicatorColor = Color.Transparent
+)
+
+@Composable
+private fun PlainMoneyField(value: String, onValueChange: (String) -> Unit, label: String) {
+    val displayText = formatRibuan(digitsOnly(value))
+    TextField(
+        value = TextFieldValue(displayText, TextRange(displayText.length)),
+        onValueChange = { incoming -> onValueChange(digitsOnly(incoming.text).trimStart('0')) },
+        label = { Text(label) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = moneyFieldColors()
+    )
+}
+
+@Composable
+private fun AutoZeroMoneyField(value: String, onValueChange: (String) -> Unit, label: String) {
+    val digits = digitsOnly(value)
+    var auto by remember { mutableStateOf(digits.isEmpty()) }
+    val active = auto && (digits.isEmpty() || (digits.length > AUTO_ZEROS && digits.endsWith(AUTO_ZEROS_STR)))
+
+    val tfv: TextFieldValue = if (active && digits.isNotEmpty()) {
+        val typedLen = digits.length - AUTO_ZEROS
+        val formatted = formatRibuan(digits)
+        var seen = 0
+        var cut = formatted.length
+        for (i in formatted.indices) {
+            if (formatted[i].isDigit()) seen++
+            if (seen == typedLen) { cut = i + 1; break }
         }
-        val full = digits + "0".repeat(zeroCount)
-        val formatted = formatRibuan(full)
-        val offsetMapping = object : OffsetMapping {
-            override fun originalToTransformed(offset: Int): Int = formatted.length
-            override fun transformedToOriginal(offset: Int): Int = digits.length
+        val text = buildAnnotatedString {
+            append(formatted.substring(0, cut))
+            withStyle(SpanStyle(color = Muted.copy(alpha = 0.55f))) { append(formatted.substring(cut)) }
         }
-        return TransformedText(AnnotatedString(formatted), offsetMapping)
+        TextFieldValue(text, TextRange(cut))
+    } else {
+        val shown = formatRibuan(digits)
+        TextFieldValue(shown, TextRange(shown.length))
+    }
+
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        TextField(
+            value = tfv,
+            onValueChange = { incoming ->
+                val inDigits = digitsOnly(incoming.text)
+                if (active) {
+                    when {
+                        digits.isEmpty() -> {
+                            val typed = inDigits.trimStart('0')
+                            auto = true
+                            onValueChange(if (typed.isEmpty()) "" else typed + AUTO_ZEROS_STR)
+                        }
+                        inDigits.length < digits.length -> {
+                            auto = false
+                            onValueChange(digits.dropLast(AUTO_ZEROS))
+                        }
+                        inDigits == digits -> Unit
+                        else -> {
+                            val typed = inDigits.dropLast(AUTO_ZEROS).trimStart('0')
+                            onValueChange(if (typed.isEmpty()) "" else typed + AUTO_ZEROS_STR)
+                        }
+                    }
+                } else {
+                    val manual = inDigits.trimStart('0')
+                    if (manual.isEmpty()) auto = true 
+                    onValueChange(manual)
+                }
+            },
+            label = { Text(label) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = moneyFieldColors()
+        )
     }
 }
 
@@ -134,53 +212,10 @@ private fun SheetField(
     singleLine: Boolean = true
 ) {
     if (isMoney) {
-        val context = LocalContext.current
-        val zeroCount = remember { AppPrefs.trailingZeros(context) }
-        val zerosStr = if (zeroCount > 0) "0".repeat(zeroCount) else ""
-        val digits = digitsOnly(value)
-        val displayText = if (autoThousand) digits else formatRibuan(digits)
-        val tf = TextFieldValue(displayText, TextRange(displayText.length))
-
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TextField(
-                value = tf,
-                onValueChange = { incoming ->
-                    val dig = digitsOnly(incoming.text)
-                    onValueChange(dig)
-                },
-                label = { Text(label) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                visualTransformation = if (autoThousand && zeroCount > 0) {
-                    AutoTrailingZerosTransformation(zeroCount)
-                } else if (autoThousand) {
-                    VisualTransformation { text ->
-                        val d = text.text.filter { it.isDigit() }
-                        val shown = if (d.isEmpty()) "" else formatRibuan(d)
-                        val mapping = object : OffsetMapping {
-                            override fun originalToTransformed(offset: Int) = shown.length
-                            override fun transformedToOriginal(offset: Int) = d.length
-                        }
-                        TransformedText(AnnotatedString(shown), mapping)
-                    }
-                } else {
-                    VisualTransformation.None
-                },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = FieldBg,
-                    unfocusedContainerColor = FieldBg,
-                    disabledContainerColor = FieldBg,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent
-                )
-            )
+        if (autoThousand) {
+            AutoZeroMoneyField(value, onValueChange, label)
+        } else {
+            PlainMoneyField(value, onValueChange, label)
         }
     } else {
         TextField(
@@ -531,8 +566,7 @@ fun CashTransferDialog(
             SheetButton(
                 if (isWithdraw) "Tarik" else "Setor",
                 {
-                    val mul = AppPrefs.multiplier(AppPrefs.trailingZeros(context))
-                    val amount = (amountDigits.toLongOrNull() ?: 0L) * mul
+                    val amount = amountDigits.toLongOrNull() ?: 0L
                     val other = otherAccount
                     val cash = cashAccount
                     if (other != null && cash != null && amount > 0) {
@@ -728,8 +762,7 @@ fun WeeklyScheduleDialog(
                 {
                     val account = accounts.firstOrNull { it.id == selected }
                     if (account != null) {
-                        val amount = (amountDigits.toLongOrNull() ?: 0L) *
-                            AppPrefs.multiplier(AppPrefs.trailingZeros(context))
+                        val amount = (amountDigits.toLongOrNull() ?: 0L)
                         onConfirm(account, amount, day)
                     }
                 },
@@ -793,8 +826,7 @@ fun InvestmentTransferDialog(
                 {
                     val account = accounts.firstOrNull { it.id == selected }
                     if (account != null) {
-                        val amount = (amountDigits.toLongOrNull() ?: 0L) *
-                            AppPrefs.multiplier(AppPrefs.trailingZeros(context))
+                        val amount = (amountDigits.toLongOrNull() ?: 0L)
                         val fee = if (showFee) feeDigits.toLongOrNull() ?: 0L else 0L
                         onConfirm(account, amount, fee)
                     }
@@ -859,24 +891,12 @@ fun DebtPaymentDialog(
     onDismiss: () -> Unit,
     onConfirm: (account: AccountEntity, amount: Long) -> Unit
 ) {
-    val context = LocalContext.current
-    val mul = remember { AppPrefs.multiplier(AppPrefs.trailingZeros(context)) }.coerceAtLeast(1L)
     val remaining = (total - paid).coerceAtLeast(0L)
-    var amountDigits by remember { mutableStateOf(if (remaining % mul == 0L) (remaining / mul).toString() else "") }
-    var exactAmount by remember { mutableStateOf<Long?>(if (remaining % mul == 0L) null else remaining) }
+    // Terisi sisa tagihan sejak awal -> field mulai dalam mode manual (angka sebenarnya, tanpa nol otomatis).
+    var amountDigits by remember { mutableStateOf(if (remaining > 0L) remaining.toString() else "") }
     var selected by remember { mutableStateOf(accounts.firstOrNull()?.id ?: "") }
 
-    fun setAmount(value: Long) {
-        if (value % mul == 0L) {
-            amountDigits = (value / mul).toString()
-            exactAmount = null
-        } else {
-            amountDigits = ""
-            exactAmount = value
-        }
-    }
-
-    val amount = exactAmount ?: ((amountDigits.toLongOrNull() ?: 0L) * mul)
+    val amount = amountDigits.toLongOrNull() ?: 0L
     val valid = amount in 1L..remaining && accounts.isNotEmpty()
 
     AppBottomSheet(onDismiss) {
@@ -890,10 +910,7 @@ fun DebtPaymentDialog(
         Spacer(Modifier.height(7.dp))
         SheetField(
             value = amountDigits,
-            onValueChange = {
-                amountDigits = it.trimStart('0')
-                exactAmount = null
-            },
+            onValueChange = { amountDigits = it },
             label = "Nominal $actionLabel",
             isMoney = true,
             autoThousand = true
