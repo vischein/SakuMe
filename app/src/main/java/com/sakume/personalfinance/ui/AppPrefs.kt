@@ -18,6 +18,12 @@ object AppPrefs {
     private const val KEY_AUTO_BACKUP_FOLDER = "auto_backup_folder_uri"
     private const val KEY_AUTO_BACKUP_HASH = "auto_backup_last_hash"
     private const val KEY_AUTO_BACKUP_LAST = "auto_backup_last_millis"
+    private const val KEY_HOME_SECTION_PREFIX = "home_section_expanded_"
+
+    const val HOME_SECTION_ACCOUNTS = "accounts"
+    const val HOME_SECTION_BILLS = "bills"
+    const val HOME_SECTION_TRANSACTIONS = "transactions"
+    const val HOME_SECTION_OTHERS = "others"
 
     const val DEFAULT_TRAILING_ZEROS = 3
     const val DEFAULT_MAX_CATCHUP_DAYS = 30
@@ -54,6 +60,13 @@ object AppPrefs {
 
     fun setHideHomeBalance(context: Context, hidden: Boolean) {
         prefs(context).edit().putBoolean(KEY_HIDE_HOME_BALANCE, hidden).apply()
+    }
+
+    fun homeSectionExpanded(context: Context, section: String): Boolean =
+        prefs(context).getBoolean(KEY_HOME_SECTION_PREFIX + section, true)
+
+    fun setHomeSectionExpanded(context: Context, section: String, expanded: Boolean) {
+        prefs(context).edit().putBoolean(KEY_HOME_SECTION_PREFIX + section, expanded).apply()
     }
 
     fun notificationsEnabled(context: Context): Boolean =

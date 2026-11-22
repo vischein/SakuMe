@@ -29,7 +29,7 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
-            // darkScrim dipakai hanya di Android 8.0 yang belum punya ikon navigasi gelap
+            
             navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.argb(0x80, 0x1B, 0x1B, 0x1B))
         )
         requestedTab = intent?.getStringExtra(Notify.EXTRA_OPEN_TAB)

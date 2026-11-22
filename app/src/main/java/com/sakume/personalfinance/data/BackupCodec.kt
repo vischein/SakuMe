@@ -50,10 +50,60 @@ object BackupCodec {
     fun encode(data: BackupData): String = json.encodeToString(data)
     fun decode(text: String): BackupData = json.decodeFromString(text)
 
-    fun isLegacySakuMe(text: String): Boolean = try {
-        val obj = Json.parseToJsonElement(text).jsonObject
-        obj.containsKey("appId") || obj.containsKey("savingGoals")
-    } catch (e: Exception) { false }
+    
+
+
+
+    fun encodeEncrypted(context: android.content.Context, data: BackupData): String {
+        val plain = encode(data)
+        return SecureCrypto.encrypt(plain, SecureStore.getOrCreateMasterKey(context))
+    }
+
+    
+
+
+
+
+
+
+    fun decodeMaybeEncrypted(
+        context: android.content.Context,
+        text: String,
+        password: CharArray? = null
+    ): BackupData {
+        val trimmed = text.trimStart()
+        val plain = when {
+            SecureCrypto.isPasswordEncrypted(trimmed) -> {
+                require(password != null && password.isNotEmpty()) {
+                    "Backup dilindungi password. Masukkan password untuk membuka."
+                }
+                SecureCrypto.decryptWithPassword(trimmed, password)
+            }
+            SecureCrypto.isEncrypted(trimmed) -> {
+                try {
+                    SecureCrypto.decrypt(trimmed, SecureStore.getOrCreateMasterKey(context))
+                } catch (e: Exception) {
+                    throw IllegalArgumentException(
+                        "Backup terenkripsi dengan kunci perangkat lain. " +
+                            "Restore hanya bisa di perangkat yang sama, atau gunakan backup ber-password.",
+                        e
+                    )
+                }
+            }
+            else -> trimmed
+        }
+        return if (isLegacySakuMe(plain)) decodeLegacySakuMe(plain) else decode(plain)
+    }
+
+    fun isLegacySakuMe(text: String): Boolean {
+        if (SecureCrypto.isEncrypted(text)) return false
+        return try {
+            val obj = Json.parseToJsonElement(text).jsonObject
+            obj.containsKey("appId") || obj.containsKey("savingGoals")
+        } catch (e: Exception) {
+            false
+        }
+    }
 
     fun decodeLegacySakuMe(text: String): BackupData {
         val root = Json.parseToJsonElement(text).jsonObject

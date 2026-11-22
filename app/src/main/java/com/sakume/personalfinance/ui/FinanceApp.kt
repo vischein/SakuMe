@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -38,13 +39,13 @@ import com.sakume.personalfinance.ui.components.FormDialog
 import com.sakume.personalfinance.ui.components.MessageDialog
 import com.sakume.personalfinance.ui.isCashAccount
 import com.sakume.personalfinance.ui.screens.AnalyticsScreen
+import com.sakume.personalfinance.ui.screens.HistoryFilter
 import com.sakume.personalfinance.ui.screens.ManageAccountsScreen
 import com.sakume.personalfinance.ui.screens.BackupScreen
 import com.sakume.personalfinance.ui.screens.TransactionHistoryScreen
 import com.sakume.personalfinance.ui.screens.BillsScreen
 import com.sakume.personalfinance.ui.screens.HomeScreen
 import com.sakume.personalfinance.ui.screens.InvestmentScreen
-import com.sakume.personalfinance.ui.screens.MoreScreen
 import com.sakume.personalfinance.ui.screens.SettingsScreen
 import com.sakume.personalfinance.ui.theme.SakuMeTheme
 import com.sakume.personalfinance.ui.theme.Paper
@@ -85,6 +86,10 @@ fun FinanceApp(
     var tab by remember { mutableStateOf("Home") }
     var subScreen by remember { mutableStateOf<String?>(null) }
     var historyAccountId by remember { mutableStateOf<String?>(null) }
+    var historyFilter by remember { mutableStateOf<HistoryFilter?>(null) }
+    
+    var analyticsPeriodIndex by rememberSaveable { mutableStateOf(0) }
+    val analyticsListState = rememberLazyListState()
     var billsProviderFilter by remember { mutableStateOf("Semua") }
     var debtFilter by remember { mutableStateOf("Semua") }
     var investSegment by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -102,11 +107,24 @@ fun FinanceApp(
         val t = requestedTab
         if (t != null) {
             if (t in setOf("Home", "Analisis", "Bills", "Invest", "More")) {
-                tab = t
+                if (t == "More") {
+                    
+                    investSegment = 2
+                    tab = "Invest"
+                } else {
+                    tab = t
+                }
                 subScreen = null
                 if (t == "Bills") billsProviderFilter = "Semua"
             }
             onTabHandled()
+        }
+    }
+
+    LaunchedEffect(subScreen) {
+        if (subScreen != "txHistory") {
+            historyFilter = null
+            historyAccountId = null
         }
     }
 
@@ -205,11 +223,11 @@ fun FinanceApp(
                 SakuMeBottomBar(
                     selected = tab,
                     investSegment = activeInvestSegment,
+                    onQuickAction = { key -> dialog = key },
                     onSelect = { label ->
                         tab = label
                         subScreen = null
                         if (label == "Bills") billsProviderFilter = "Semua"
-                        if (label == "More") debtFilter = "Semua"
                     }
                 )
             },
@@ -234,8 +252,9 @@ fun FinanceApp(
                         TransactionHistoryScreen(
                             accounts = accounts,
                             tx = transactions,
-                            onBack = { subScreen = null; historyAccountId = null },
+                            onBack = { subScreen = null; historyAccountId = null; historyFilter = null },
                             accountFilter = historyAccountId,
+                            initialFilter = historyFilter,
                             onDeleteMany = { ids ->
                                 dialog = "deletetxmany:${ids.joinToString(",")}"
                             }
@@ -307,6 +326,16 @@ fun FinanceApp(
                             debts = debts,
                             onAction = { action ->
                                 when {
+                                    action == "history:income" || action == "history:expense" -> {
+                                        val income = action == "history:income"
+                                        historyAccountId = null
+                                        historyFilter = HistoryFilter(
+                                            type = if (income) "income" else "expense",
+                                            startMillis = startOfMonthMillis(),
+                                            title = if (income) "Dana masuk bulan ini" else "Dana keluar bulan ini"
+                                        )
+                                        subScreen = "txHistory"
+                                    }
                                     action == "accounts" -> subScreen = "manageAccounts"
                                     action.startsWith("accountHistory:") -> {
                                         historyAccountId = action.removePrefix("accountHistory:")
@@ -339,29 +368,50 @@ fun FinanceApp(
                                     }
                                     action == "more:piutang" -> {
                                         debtFilter = "Piutang"
-                                        tab = "More"
+                                        investSegment = 2
+                                        tab = "Invest"
                                     }
                                     action == "more:utang" -> {
                                         debtFilter = "Utang"
-                                        tab = "More"
+                                        investSegment = 2
+                                        tab = "Invest"
                                     }
                                     else -> dialog = action
                                 }
                             },
-                            onSeeAllTx = { subScreen = "txHistory" }
+                            onOpenSettings = { subScreen = "settings" },
+                            onSeeAllTx = {
+                                
+                                historyAccountId = null
+                                historyFilter = null
+                                subScreen = "txHistory"
+                            }
                         )
                         "Analisis" -> AnalyticsScreen(
                             accounts = accounts,
                             tx = transactions,
                             bills = bills,
                             debts = debts,
-                            onManageAccounts = { subScreen = "manageAccounts" }
+                            onManageAccounts = { subScreen = "manageAccounts" },
+                            onOpenHistory = { f ->
+                                historyAccountId = null
+                                historyFilter = f
+                                subScreen = "txHistory"
+                            },
+                            onOpenDebts = { filter ->
+                                debtFilter = filter
+                                subScreen = null
+                                investSegment = 2
+                                tab = "Invest"
+                            },
+                            periodIndex = analyticsPeriodIndex,
+                            onPeriodIndexChange = { analyticsPeriodIndex = it },
+                            listState = analyticsListState
                         )
                         "Bills" -> BillsScreen(
                             bills = bills,
                             accounts = accounts,
                             initialProvider = billsProviderFilter,
-                            onAdd = { dialog = "bill" },
                             onPay = { b -> dialog = "paybill:${b.id}" },
                             onPayMonth = { list -> dialog = "paymany:${list.joinToString(",") { it.id }}" },
                             onDelete = { b -> dialog = "deletebill:${b.id}" },
@@ -385,28 +435,15 @@ fun FinanceApp(
                             onToggleSchedule = { s, on -> vm.setScheduleEnabled(s.id, on) },
                             onDeleteSchedule = { s -> vm.deleteSchedule(s.id) },
                             onEdit = { a -> dialog = "editinvest:${a.id}" },
-                            onDelete = { a -> dialog = "deleteinvest:${a.id}" }
-                        )
-                        else -> MoreScreen(
+                            onDelete = { a -> dialog = "deleteinvest:${a.id}" },
                             debts = debts,
-                            accounts = accounts,
-                            initialDebtFilter = debtFilter,
-                            onAddDebt = { filter ->
-                                debtFilter = filter
-                                dialog = "debt"
-                            },
-                            onPaid = { d -> dialog = "paydebt:${d.id}" },
-                            onUnpaid = { d -> vm.markDebtUnpaid(d) { error = it } },
+                            debtFilter = debtFilter,
+                            onDebtFilterChange = { debtFilter = it },
+                            onAddDebt = { dialog = "debt" },
+                            onPaidDebt = { d -> dialog = "paydebt:${d.id}" },
+                            onUnpaidDebt = { d -> vm.markDebtUnpaid(d) { error = it } },
                             onEditDebt = { d -> dialog = "editdebt:${d.id}" },
-                            onDeleteDebt = { d -> dialog = "deletedebt:${d.id}" },
-                            onOpenSettings = { subScreen = "settings" },
-                            onOpenAccounts = { subScreen = "manageAccounts" },
-                            onOpenHistory = {
-                                historyAccountId = null
-                                subScreen = "txHistory"
-                            },
-                            onOpenBackup = { subScreen = "backup" },
-                            onDebtFilterChange = { debtFilter = it }
+                            onDeleteDebt = { d -> dialog = "deletedebt:${d.id}" }
                         )
                     }
                 }

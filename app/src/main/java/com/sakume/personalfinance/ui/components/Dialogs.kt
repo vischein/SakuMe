@@ -65,12 +65,12 @@ import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Muted
 import com.sakume.personalfinance.ui.theme.Paper
 import com.sakume.personalfinance.ui.theme.Red
+import com.sakume.personalfinance.ui.theme.CancelBg
 import java.text.NumberFormat
 import java.util.Calendar
 import java.util.Locale
 
 private val FieldBg = Color(0xFFFFFFFF)
-private val CancelBg = Color(0xFFE8E8E8)
 
 fun formatRibuan(digits: String): String {
     if (digits.isEmpty()) return ""
@@ -582,7 +582,6 @@ private fun OptionCard(
         }
     }
 }
-
 
 @Composable
 private fun CardPickerField(

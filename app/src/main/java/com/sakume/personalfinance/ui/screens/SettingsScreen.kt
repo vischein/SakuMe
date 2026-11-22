@@ -146,8 +146,6 @@ fun SettingsScreen(
         }
     }
 
-    // Satu PinEntryDialog dipakai untuk semua langkah, jadi window dialog (dan status bar /
-    // navigation bar-nya) tidak dibuat ulang dan berkedip di tiap langkah.
     val pinStepActive = pinFlow in setOf("setup1", "setup2", "verify_disable", "verify_change") ||
         (pinFlow == "choose_length" && lockEnabled)
     if (pinStepActive) {
@@ -507,7 +505,10 @@ fun SettingsScreen(
             item {
                 SettingsSection(icon = Icons.Filled.Backup, title = "Backup & restore") {
                     Text(
-                        "Backup otomatis, daftar backup per tanggal, dan restore. File JSON belum terenkripsi — jangan bagikan ke sembarang orang.",
+                        "Backup otomatis, daftar backup per tanggal, dan restore. " +
+                            "File backup dienkripsi AES-256-GCM dengan kunci perangkat. " +
+                            "Database dilindungi SQLCipher. Backup perangkat hanya bisa " +
+                            "di-restore di perangkat yang sama; untuk pindah perangkat gunakan export ber-password.",
                         color = Muted,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(bottom = 10.dp)
@@ -527,7 +528,7 @@ fun SettingsScreen(
                 SettingsSection(icon = Icons.Filled.Tune, title = "Tentang data") {
                     Text(
                         "Skala uang: 1 unit = Rp1 (rupiah utuh, bukan sen).\n" +
-                            "Versi app: 1.2, Room schema v15",
+                            "Versi app: 1.4.0 · Room schema v15 · SQLCipher aktif",
                         color = Muted,
                         fontSize = 12.sp,
                         lineHeight = 18.sp

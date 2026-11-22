@@ -225,12 +225,6 @@ fun PinEntryDialog(
     }
 }
 
-/**
- * Dialog adalah window terpisah dari Activity, jadi tidak ikut edge-to-edge:
- * status bar / navigation bar-nya tampil gelap (dim) dengan ikon terang.
- * Fungsi ini membuat window dialog menggambar sampai belakang kedua bar,
- * menghilangkan dim, dan memakai ikon gelap seperti layar lain.
- */
 @Suppress("DEPRECATION")
 @Composable
 internal fun EdgeToEdgeDialogWindow(background: Color) {

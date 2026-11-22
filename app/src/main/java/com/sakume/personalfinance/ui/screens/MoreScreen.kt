@@ -1,43 +1,35 @@
 package com.sakume.personalfinance.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CallMade
 import androidx.compose.material.icons.filled.CallReceived
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,7 +41,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.sakume.personalfinance.data.AccountEntity
 import com.sakume.personalfinance.data.DebtEntity
 import com.sakume.personalfinance.ui.components.EmptyHint
 import com.sakume.personalfinance.ui.components.SegmentedChips
@@ -58,45 +49,32 @@ import com.sakume.personalfinance.ui.dueInLabel
 import com.sakume.personalfinance.ui.formatDate
 import com.sakume.personalfinance.ui.rupiah
 import com.sakume.personalfinance.ui.shareDebtReminder
-import com.sakume.personalfinance.ui.theme.Accent
-import com.sakume.personalfinance.ui.theme.AccentSoft
 import com.sakume.personalfinance.ui.theme.CardBg
 import com.sakume.personalfinance.ui.theme.Gold
-import com.sakume.personalfinance.ui.theme.GoldSoft
 import com.sakume.personalfinance.ui.theme.Green
 import com.sakume.personalfinance.ui.theme.GreenSoft
 import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Muted
 import com.sakume.personalfinance.ui.theme.Panel
 import com.sakume.personalfinance.ui.theme.PanelSoft
-import com.sakume.personalfinance.ui.theme.Paper
 import com.sakume.personalfinance.ui.theme.Red
 import com.sakume.personalfinance.ui.theme.RedSoft
 
 private val debtFilters = listOf("Semua", "Piutang", "Utang")
 
-@Composable
-fun MoreScreen(
+
+
+
+
+internal fun LazyListScope.debtSection(
     debts: List<DebtEntity>,
-    accounts: List<AccountEntity> = emptyList(),
-    initialDebtFilter: String = "Semua",
-    onAddDebt: (filter: String) -> Unit,
+    debtFilter: String,
+    onDebtFilterChange: (String) -> Unit,
     onPaid: (DebtEntity) -> Unit,
     onUnpaid: (DebtEntity) -> Unit,
-    onEditDebt: (DebtEntity) -> Unit = {},
-    onDeleteDebt: (DebtEntity) -> Unit = {},
-    onOpenSettings: () -> Unit = {},
-    onOpenAccounts: () -> Unit = {},
-    onOpenHistory: () -> Unit = {},
-    onOpenBackup: () -> Unit = {},
-    onDebtFilterChange: (String) -> Unit = {}
+    onEdit: (DebtEntity) -> Unit,
+    onDelete: (DebtEntity) -> Unit
 ) {
-    var debtFilter by remember(initialDebtFilter) { mutableStateOf(initialDebtFilter) }
-    fun setDebtFilter(value: String) {
-        debtFilter = value
-        onDebtFilterChange(value)
-    }
-
     val piutang = debts.filter { it.type == "piutang" && !it.isPaid }.sumOf { it.remaining }
     val utang = debts.filter { it.type == "utang" && !it.isPaid }.sumOf { it.remaining }
     val visibleDebts = when (debtFilter) {
@@ -105,121 +83,35 @@ fun MoreScreen(
         else -> debts
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column {
-                    Text("Lainnya", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Ink)
-                    Text("Pintasan dan catatan piutang / utang", color = Muted, fontSize = 13.sp)
+    item(key = "debt-hero") { DebtHero(piutang = piutang, utang = utang) }
+
+    item(key = "debt-filter") {
+        SegmentedChips(
+            options = debtFilters,
+            selectedIndex = debtFilters.indexOf(debtFilter).coerceAtLeast(0),
+            onSelect = { onDebtFilterChange(debtFilters[it]) }
+        )
+    }
+
+    if (visibleDebts.isEmpty()) {
+        item(key = "debt-empty") {
+            EmptyHint(
+                when (debtFilter) {
+                    "Piutang" -> "Belum ada piutang. Tambah lewat tombol + di bawah."
+                    "Utang" -> "Belum ada utang. Tambah lewat tombol + di bawah."
+                    else -> "Belum ada piutang / utang. Tambah lewat tombol + di bawah."
                 }
-            }
-        }
-
-        item {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(CardBg)
-                    .padding(horizontal = 6.dp, vertical = 14.dp)
-            ) {
-                ShortcutItem(Icons.Filled.AccountBalanceWallet, Accent, AccentSoft, "Rekening", Modifier.weight(1f), onOpenAccounts)
-                ShortcutItem(Icons.Filled.History, Gold, GoldSoft, "Riwayat", Modifier.weight(1f), onOpenHistory)
-                ShortcutItem(Icons.Filled.Backup, Green, GreenSoft, "Backup", Modifier.weight(1f), onOpenBackup)
-                ShortcutItem(Icons.Filled.Tune, Ink, Paper, "Pengaturan", Modifier.weight(1f), onOpenSettings)
-            }
-        }
-
-        item {
-            Row(
-                Modifier.fillMaxWidth().padding(top = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Piutang / Utang", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Ink)
-                Row(
-                    Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Ink)
-                        .clickable { onAddDebt(debtFilter) }
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Filled.Add, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Tambah", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
-
-        item { DebtHero(piutang = piutang, utang = utang) }
-
-        item {
-            SegmentedChips(
-                options = debtFilters,
-                selectedIndex = debtFilters.indexOf(debtFilter).coerceAtLeast(0),
-                onSelect = { setDebtFilter(debtFilters[it]) }
-            )
-        }
-
-        if (visibleDebts.isEmpty()) {
-            item {
-                EmptyHint(
-                    when (debtFilter) {
-                        "Piutang" -> "Belum ada piutang."
-                        "Utang" -> "Belum ada utang."
-                        else -> "Belum ada piutang / utang."
-                    }
-                )
-            }
-        }
-
-        items(visibleDebts, key = { it.id }) { d ->
-            DebtCard(
-                d = d,
-                onPaid = { onPaid(d) },
-                onUnpaid = { onUnpaid(d) },
-                onEdit = { onEditDebt(d) },
-                onDelete = { onDeleteDebt(d) }
             )
         }
     }
-}
 
-@Composable
-private fun ShortcutItem(
-    icon: ImageVector,
-    tint: Color,
-    soft: Color,
-    title: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(soft),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, null, tint = tint, modifier = Modifier.size(26.dp))
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            title,
-            color = Ink,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+    items(visibleDebts, key = { "debt-${it.id}" }) { d ->
+        DebtCard(
+            d = d,
+            onPaid = { onPaid(d) },
+            onUnpaid = { onUnpaid(d) },
+            onEdit = { onEdit(d) },
+            onDelete = { onDelete(d) }
         )
     }
 }

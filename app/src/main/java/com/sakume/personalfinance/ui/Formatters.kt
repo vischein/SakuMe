@@ -91,3 +91,39 @@ fun startOfMonthMillis(): Long =
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
+
+private val ID_LOCALE = Locale("id", "ID")
+
+fun startOfDayMillis(ms: Long = System.currentTimeMillis()): Long =
+    Calendar
+        .getInstance()
+        .apply {
+            timeInMillis = ms
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+fun startOfWeekMillis(ms: Long = System.currentTimeMillis()): Long {
+    val cal = Calendar.getInstance().apply { timeInMillis = startOfDayMillis(ms) }
+    
+    val sinceMonday = (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    cal.add(Calendar.DAY_OF_MONTH, -sinceMonday)
+    return cal.timeInMillis
+}
+
+fun formatTime(ms: Long): String = SimpleDateFormat("HH:mm", ID_LOCALE).format(Date(ms))
+
+fun isStartOfDay(ms: Long): Boolean = ms == startOfDayMillis(ms)
+
+fun dayHeaderLabel(dayStartMillis: Long, todayStartMillis: Long = startOfDayMillis()): String {
+    val zone = java.time.ZoneId.systemDefault()
+    val day = java.time.Instant.ofEpochMilli(dayStartMillis).atZone(zone).toLocalDate()
+    val today = java.time.Instant.ofEpochMilli(todayStartMillis).atZone(zone).toLocalDate()
+    return when (java.time.temporal.ChronoUnit.DAYS.between(day, today)) {
+        0L -> "Hari ini"
+        1L -> "Kemarin"
+        else -> SimpleDateFormat("EEEE, d MMM yyyy", ID_LOCALE).format(Date(dayStartMillis))
+    }
+}

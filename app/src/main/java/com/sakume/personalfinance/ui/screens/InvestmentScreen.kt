@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sakume.personalfinance.data.AccountEntity
+import com.sakume.personalfinance.data.DebtEntity
 import com.sakume.personalfinance.data.InvestmentEntity
 import com.sakume.personalfinance.data.InvestmentHoldingEntity
 import com.sakume.personalfinance.data.ScheduledInvestmentEntity
@@ -115,7 +116,15 @@ fun InvestmentScreen(
     onToggleSchedule: (ScheduledInvestmentEntity, Boolean) -> Unit,
     onDeleteSchedule: (ScheduledInvestmentEntity) -> Unit,
     onEdit: (InvestmentEntity) -> Unit = {},
-    onDelete: (InvestmentEntity) -> Unit
+    onDelete: (InvestmentEntity) -> Unit,
+    debts: List<DebtEntity> = emptyList(),
+    debtFilter: String = "Semua",
+    onDebtFilterChange: (String) -> Unit = {},
+    onAddDebt: () -> Unit = {},
+    onPaidDebt: (DebtEntity) -> Unit = {},
+    onUnpaidDebt: (DebtEntity) -> Unit = {},
+    onEditDebt: (DebtEntity) -> Unit = {},
+    onDeleteDebt: (DebtEntity) -> Unit = {}
 ) {
     val active = items.filterNot { it.archived }
     val goals = active.filter { it.isGoal }.sortedWith(
@@ -134,13 +143,21 @@ fun InvestmentScreen(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    if (segment == 0) "Tabungan" else "Investasi",
+                    when (segment) {
+                        0 -> "Tabungan"
+                        1 -> "Investasi"
+                        else -> "Piutang / Utang"
+                    },
                     fontSize = 26.sp,
                     fontWeight = FontWeight.Bold,
                     color = Ink
                 )
                 Text(
-                    if (segment == 0) "${goals.size} goal aktif" else "${platforms.size} platform aktif",
+                    when (segment) {
+                        0 -> "${goals.size} goal aktif"
+                        1 -> "${platforms.size} platform aktif"
+                        else -> "${debts.count { !it.isPaid }} belum lunas"
+                    },
                     color = Muted,
                     fontSize = 13.sp
                 )
@@ -150,12 +167,22 @@ fun InvestmentScreen(
                     .size(44.dp)
                     .clip(CircleShape)
                     .background(Ink)
-                    .clickable { if (segment == 0) onAddGoal() else onAdd() },
+                    .clickable {
+                        when (segment) {
+                            0 -> onAddGoal()
+                            1 -> onAdd()
+                            else -> onAddDebt()
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     Icons.Filled.Add,
-                    contentDescription = if (segment == 0) "Tambah goal" else "Tambah platform",
+                    contentDescription = when (segment) {
+                        0 -> "Tambah goal"
+                        1 -> "Tambah platform"
+                        else -> "Tambah piutang / utang"
+                    },
                     tint = Color.White,
                     modifier = Modifier.size(22.dp)
                 )
@@ -163,7 +190,7 @@ fun InvestmentScreen(
         }
 
         SegmentedChips(
-            options = listOf("Tabungan", "Investasi"),
+            options = listOf("Tabungan", "Investasi", "Piutang/Utang"),
             selectedIndex = segment,
             onSelect = onSegmentChange
         )
@@ -202,7 +229,7 @@ fun InvestmentScreen(
                         )
                     }
                 }
-            } else {
+            } else if (segment == 1) {
                 if (platforms.isEmpty()) {
                     item {
                         EmptyState(
@@ -258,12 +285,20 @@ fun InvestmentScreen(
                         }
                     }
                 }
+            } else {
+                debtSection(
+                    debts = debts,
+                    debtFilter = debtFilter,
+                    onDebtFilterChange = onDebtFilterChange,
+                    onPaid = onPaidDebt,
+                    onUnpaid = onUnpaidDebt,
+                    onEdit = onEditDebt,
+                    onDelete = onDeleteDebt
+                )
             }
         }
     }
 }
-
-// ---------------------------------------------------------------- hero cards
 
 @Composable
 private fun GoalsHero(goals: List<InvestmentEntity>) {
@@ -365,8 +400,6 @@ private fun InvestHero(platforms: List<InvestmentEntity>, holdings: List<Investm
         }
     }
 }
-
-// ---------------------------------------------------------------- goal card
 
 private data class CategoryStyle(val icon: ImageVector, val tint: Color, val soft: Color)
 
@@ -543,8 +576,6 @@ private fun GoalCard(
     }
 }
 
-// ---------------------------------------------------------------- platform card
-
 @Composable
 private fun PlatformCard(
     platform: InvestmentEntity,
@@ -686,8 +717,6 @@ private fun PlatformCard(
         }
     }
 }
-
-// ---------------------------------------------------------------- shared bits
 
 @Composable
 private fun ScheduleRow(
