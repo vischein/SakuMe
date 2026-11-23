@@ -177,6 +177,10 @@ fun FinanceApp(
         vm.processDueSchedules { result -> Notify.scheduleResult(context, result) }
     }
 
+    LaunchedEffect(Unit) {
+        vm.errors.collect { message -> error = message }
+    }
+
     fun restoreFromText(text: String, legacy: Boolean, password: CharArray? = null) {
         vm.importJson(
             json = text,

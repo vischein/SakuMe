@@ -1,6 +1,7 @@
 package com.sakume.personalfinance.ui
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sakume.personalfinance.data.*
@@ -9,7 +10,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -29,7 +32,14 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
     private val _dbState = MutableStateFlow<DbState>(DbState.Loading)
     val dbState: StateFlow<DbState> = _dbState
 
+    private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val errors: SharedFlow<String> = _errors
+
     private val repoFlow = MutableStateFlow<FinanceRepository?>(null)
+
+    private fun report(message: String) {
+        _errors.tryEmit(message)
+    }
 
     /** Hanya dipakai setelah [dbState] = Ready (UI baru ditampilkan saat itu). */
     private val repo: FinanceRepository
@@ -68,6 +78,8 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
                 _dbState.value = DbState.Ready
                 try {
                     opened.cleanupCategoryLabels()
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                 }
             } catch (e: CancellationException) {
@@ -87,10 +99,12 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun run(action: suspend FinanceRepository.() -> Unit, onError: (String) -> Unit = {}) {
+    fun run(action: suspend FinanceRepository.() -> Unit, onError: (String) -> Unit = { report(it) }) {
         viewModelScope.launch {
             try {
                 repo.action()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 onError(e.message ?: "Terjadi kesalahan")
             }
@@ -109,20 +123,22 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
     fun reorderAccounts(orderedIds: List<String>) =
         run({ reorderAccounts(orderedIds) })
 
-    fun recalculateBalances(onDone: () -> Unit = {}, error: (String) -> Unit = {}) {
+    fun recalculateBalances(onDone: () -> Unit = {}, error: (String) -> Unit = { report(it) }) {
         viewModelScope.launch {
             try {
                 repo.recalculateBalances()
                 onDone()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 error(e.message ?: "Gagal menghitung ulang saldo")
             }
         }
     }
 
-    fun deleteTransaction(id: String, error: (String) -> Unit = {}) = run({ deleteTransaction(id) }, error)
+    fun deleteTransaction(id: String, error: (String) -> Unit = { report(it) }) = run({ deleteTransaction(id) }, error)
 
-    fun deleteTransactions(ids: List<String>, error: (String) -> Unit = {}) =
+    fun deleteTransactions(ids: List<String>, error: (String) -> Unit = { report(it) }) =
         run({ deleteTransactions(ids) }, error)
 
     fun addTransaction(
@@ -147,10 +163,10 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
     fun payBills(list: List<BillEntity>, accountId: String, error: (String) -> Unit) =
         run({ payBills(list, accountId) }, error)
 
-    fun unpayBill(bill: BillEntity, error: (String) -> Unit = {}) =
+    fun unpayBill(bill: BillEntity, error: (String) -> Unit = { report(it) }) =
         run({ unpayBill(bill.id) }, error)
 
-    fun deleteBill(bill: BillEntity, error: (String) -> Unit = {}) =
+    fun deleteBill(bill: BillEntity, error: (String) -> Unit = { report(it) }) =
         run({ deleteBill(bill.id) }, error)
 
     fun deleteBills(ids: List<String>, error: (String) -> Unit, onSuccess: (Int) -> Unit = {}) {
@@ -169,13 +185,13 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addInvestment(name: String, target: Long?) = run({ addInvestment(name, target) })
 
-    fun addGoal(name: String, target: Long, deadlineMillis: Long?, category: String, error: (String) -> Unit = {}) =
+    fun addGoal(name: String, target: Long, deadlineMillis: Long?, category: String, error: (String) -> Unit = { report(it) }) =
         run({ addGoal(name, target, deadlineMillis, category) }, error)
 
-    fun updateGoal(id: String, name: String, target: Long, deadlineMillis: Long?, category: String, error: (String) -> Unit = {}) =
+    fun updateGoal(id: String, name: String, target: Long, deadlineMillis: Long?, category: String, error: (String) -> Unit = { report(it) }) =
         run({ updateGoal(id, name, target, deadlineMillis, category) }, error)
 
-    fun updateInvestment(id: String, name: String, target: Long?, error: (String) -> Unit = {}) =
+    fun updateInvestment(id: String, name: String, target: Long?, error: (String) -> Unit = { report(it) }) =
         run({ updateInvestment(id, name, target) }, error)
 
     fun contribute(asset: String, account: String, amount: Long, adminFee: Long = 0L, error: (String) -> Unit) =
@@ -200,11 +216,20 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
 
     fun processDueSchedules(onDone: (FinanceRepository.ScheduleRunResult) -> Unit = {}) {
         viewModelScope.launch {
-            try {
+            val result = try {
                 val days = AppPrefs.maxCatchupDays(getApplication())
-                onDone(repo.processDueSchedules(maxCatchupDays = days))
-            } catch (_: Exception) {
+                repo.processDueSchedules(maxCatchupDays = days)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val kind = e.javaClass.simpleName
+                Log.w("FinanceViewModel", "Pemrosesan jadwal gagal: $kind")
+                if (Notify.scheduleProcessingError(getApplication(), kind, showNotification = false)) {
+                    report("Jadwal otomatis tidak bisa diproses (kode: $kind). Gaji dan setoran terjadwal belum berjalan. Coba buka ulang aplikasi.")
+                }
+                return@launch
             }
+            onDone(result)
         }
     }
 
@@ -230,16 +255,16 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
     fun updateDebt(debtId: String, person: String, desc: String, amount: Long, dueDateMillis: Long?, error: (String) -> Unit) =
         run({ updateDebt(debtId, person, desc, amount, dueDateMillis) }, error)
 
-    fun deleteDebt(debtId: String, error: (String) -> Unit = {}) =
+    fun deleteDebt(debtId: String, error: (String) -> Unit = { report(it) }) =
         run({ deleteDebt(debtId) }, error)
 
-    fun payDebt(debtId: String, accountId: String, amount: Long, error: (String) -> Unit = {}) =
+    fun payDebt(debtId: String, accountId: String, amount: Long, error: (String) -> Unit = { report(it) }) =
         run({ payDebt(debtId, accountId, amount) }, error)
 
-    fun markDebtPaid(debt: DebtEntity, accountId: String, error: (String) -> Unit = {}) =
+    fun markDebtPaid(debt: DebtEntity, accountId: String, error: (String) -> Unit = { report(it) }) =
         run({ markDebtPaid(debt, accountId) }, error)
 
-    fun markDebtUnpaid(debt: DebtEntity, error: (String) -> Unit = {}) =
+    fun markDebtUnpaid(debt: DebtEntity, error: (String) -> Unit = { report(it) }) =
         run({ markDebtUnpaid(debt) }, error)
 
     suspend fun exportJson() = BackupManager.buildFullJson(getApplication())
@@ -248,7 +273,7 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
         json: String,
         password: CharArray? = null,
         onDone: (String) -> Unit = {},
-        error: (String) -> Unit = {},
+        error: (String) -> Unit = { report(it) },
         onNeedPassword: (Boolean) -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -263,6 +288,8 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
 
                 val preImportName = try {
                     BackupManager.savePreImport(app, repo.snapshot())
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     error("Gagal membuat backup pengaman, impor dibatalkan: ${e.message ?: "tidak diketahui"}")
                     return@launch
@@ -286,6 +313,8 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 onDone(notes.joinToString(" "))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 error(e.message ?: "Gagal mengimpor backup")
             } finally {

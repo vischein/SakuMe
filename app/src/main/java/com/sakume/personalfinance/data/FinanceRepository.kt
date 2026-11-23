@@ -1,6 +1,7 @@
 package com.sakume.personalfinance.data
 
 import androidx.room.withTransaction
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import java.util.Calendar
 import java.util.UUID
@@ -656,6 +657,8 @@ class FinanceRepository(private val db: AppDatabase) {
                     } else {
                         schedule = updated ?: schedule
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     failures += ScheduleFailure(
                         key = failureKey("invest", schedule.id, occurrenceAt, schedule.amount, schedule.accountId, schedule.assetId),
@@ -711,6 +714,8 @@ class FinanceRepository(private val db: AppDatabase) {
                     }
                     if (updated == null) break
                     schedule = updated
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     failures += ScheduleFailure(
                         key = failureKey("salary", schedule.id, occurrenceAt, schedule.amount, schedule.accountId),

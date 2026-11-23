@@ -13,6 +13,7 @@ object AppPrefs {
     private const val KEY_BILL_REMINDER_EARLY = "bill_reminder_early_days"
     private const val KEY_BILL_REMINDER_LAST_DAY = "bill_reminder_last_day"
     private const val KEY_NOTIFIED_SCHEDULE_FAILURES = "notified_schedule_failures"
+    private const val KEY_NOTIFIED_PROCESSING_ERROR = "notified_processing_error"
     private const val KEY_AUTO_BACKUP = "auto_backup_enabled"
     private const val KEY_AUTO_BACKUP_KEEP = "auto_backup_keep"
     private const val KEY_AUTO_BACKUP_FOLDER = "auto_backup_folder_uri"
@@ -105,6 +106,15 @@ object AppPrefs {
         prefs(context).edit().apply {
             if (keys.isEmpty()) remove(KEY_NOTIFIED_SCHEDULE_FAILURES)
             else putStringSet(KEY_NOTIFIED_SCHEDULE_FAILURES, HashSet(keys))
+        }.apply()
+    }
+
+    fun notifiedProcessingError(context: Context): String? =
+        prefs(context).getString(KEY_NOTIFIED_PROCESSING_ERROR, null)
+
+    fun setNotifiedProcessingError(context: Context, kind: String?) {
+        prefs(context).edit().apply {
+            if (kind == null) remove(KEY_NOTIFIED_PROCESSING_ERROR) else putString(KEY_NOTIFIED_PROCESSING_ERROR, kind)
         }.apply()
     }
 

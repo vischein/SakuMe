@@ -21,6 +21,7 @@ object Notify {
     private const val ID_SCHEDULE_FAILURE = 1004
     private const val ID_BILL = 1005
     private const val ID_DEBT = 1006
+    private const val ID_PROCESSING_ERROR = 1007
 
     private const val PUBLIC_TEXT = "Ada pembaruan di SakuMe"
 
@@ -62,7 +63,30 @@ object Notify {
         }
     }
 
+    fun scheduleProcessingError(context: Context, kind: String, showNotification: Boolean = true): Boolean {
+        if (AppPrefs.notifiedProcessingError(context) == kind) return false
+        AppPrefs.setNotifiedProcessingError(context, kind)
+        if (showNotification && AppPrefs.notificationsEnabled(context)) {
+            post(
+                context, CHANNEL_SCHEDULES, ID_PROCESSING_ERROR,
+                title = "Jadwal otomatis tidak bisa diproses",
+                text = "Gaji dan setoran terjadwal belum berjalan (kode: $kind). Buka SakuMe lalu coba lagi.",
+                lines = emptyList(),
+                tab = "Home",
+                onlyAlertOnce = true
+            )
+        }
+        return true
+    }
+
+    private fun clearProcessingError(context: Context) {
+        if (AppPrefs.notifiedProcessingError(context) == null) return
+        AppPrefs.setNotifiedProcessingError(context, null)
+        NotificationManagerCompat.from(context).cancel(ID_PROCESSING_ERROR)
+    }
+
     fun scheduleResult(context: Context, result: FinanceRepository.ScheduleRunResult) {
+        clearProcessingError(context)
         if (!AppPrefs.notificationsEnabled(context)) return
         if (result.salaryRuns.isNotEmpty()) salary(context, result.salaryRuns)
         if (result.investmentRuns.isNotEmpty()) investment(context, result.investmentRuns)
