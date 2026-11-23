@@ -1,8 +1,11 @@
 package com.sakume.personalfinance.ui.screens
 
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
+import android.content.IntentFilter
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -71,6 +74,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -98,23 +102,31 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.sakume.personalfinance.data.AccountEntity
 import com.sakume.personalfinance.data.BillEntity
 import com.sakume.personalfinance.data.DebtEntity
 import com.sakume.personalfinance.data.InvestmentEntity
 import com.sakume.personalfinance.data.TransactionEntity
 import com.sakume.personalfinance.ui.AppPrefs
+import com.sakume.personalfinance.ui.DUE_SOON_DAYS
 import com.sakume.personalfinance.ui.buildDisplayTransactions
 import com.sakume.personalfinance.ui.components.ProviderLogo
 import com.sakume.personalfinance.ui.components.TransactionRow
 import com.sakume.personalfinance.ui.daysUntilDue
+import com.sakume.personalfinance.ui.dueAttentionLabel
+import com.sakume.personalfinance.ui.dueAttentionSummary
 import com.sakume.personalfinance.ui.dueInLabel
+import com.sakume.personalfinance.ui.dueSoonBills
 import com.sakume.personalfinance.ui.formatDate
 import com.sakume.personalfinance.ui.isCashAccount
 import com.sakume.personalfinance.ui.monthKey
 import com.sakume.personalfinance.ui.monthLabel
 import com.sakume.personalfinance.ui.rupiah
+import com.sakume.personalfinance.ui.startOfDayMillis
 import com.sakume.personalfinance.ui.startOfMonthMillis
 import com.sakume.personalfinance.ui.theme.CardBg
 import com.sakume.personalfinance.ui.theme.Green
@@ -135,7 +147,29 @@ private val CardRadius = 20.dp
 private val HeroRadius = 28.dp
 private val CollapsedBarHeight = 60.dp
 private val Hairline = Ink.copy(alpha = 0.08f)
-private const val THREE_DAYS_MS = 3L * 24 * 60 * 60 * 1000
+
+
+@Composable
+private fun rememberToday(): Long {
+    val context = LocalContext.current
+    var today by remember { mutableLongStateOf(startOfDayMillis()) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { today = startOfDayMillis() }
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                today = startOfDayMillis()
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_DATE_CHANGED)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        }
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        onDispose { context.unregisterReceiver(receiver) }
+    }
+    return today
+}
 
 private fun moneyText(hidden: Boolean, value: Long): String = if (hidden) HIDDEN_MONEY else rupiah(value)
 
@@ -185,13 +219,9 @@ fun HomeScreen(
     val miniAccounts = remember(accounts) { accounts.filterNot { isCashAccount(it) } }
     val unpaidBills = remember(bills) { bills.filterNot { it.isPaid } }
     val unpaidTotal = remember(unpaidBills) { unpaidBills.sumOf { it.amount } }
-    val dueSoon = remember(unpaidBills) {
-        val now = System.currentTimeMillis()
-        unpaidBills
-            .filter { it.dueDateMillis in now..(now + THREE_DAYS_MS) }
-            .sortedBy { it.dueDateMillis }
-    }
-    val billGroups = remember(unpaidBills) {
+    val today = rememberToday()
+    val dueSoon = remember(unpaidBills, today) { dueSoonBills(unpaidBills, today) }
+    val billGroups = remember(unpaidBills, today) {
         unpaidBills.groupBy { it.provider }.toList().take(4).map { (provider, list) ->
             val nearest = list.minOf { monthKey(it.dueDateMillis) }
             val monthBills = list.filter { monthKey(it.dueDateMillis) == nearest }
@@ -201,8 +231,8 @@ fun HomeScreen(
                 count = monthBills.size,
                 monthText = monthLabel(monthBills.first().dueDateMillis),
                 total = monthBills.sumOf { it.amount },
-                days = daysUntilDue(dueMillis),
-                dueText = dueInLabel(dueMillis)
+                days = daysUntilDue(dueMillis, today),
+                dueText = dueInLabel(dueMillis, today)
             )
         }
     }
@@ -244,7 +274,7 @@ fun HomeScreen(
     else "${miniAccounts.size} rekening · ${money(miniAccounts.sumOf { it.balance })}"
     val billsSummary = if (unpaidBills.isEmpty()) "Tidak ada tagihan aktif" else buildString {
         append("${unpaidBills.size} tagihan · ${money(unpaidTotal)}")
-        if (dueSoon.isNotEmpty()) append(" · ${dueSoon.size} jatuh tempo ≤ 3 hari")
+        if (dueSoon.isNotEmpty()) append(" · ${dueAttentionSummary(dueSoon, today)}")
     }
     val transactionsSummary = if (displayTx.isEmpty()) "Belum ada transaksi"
     else "${displayTx.size} transaksi · terakhir ${formatDate(displayTx.first().dateMillis)}"
@@ -317,6 +347,7 @@ fun HomeScreen(
                 item(key = "attention") {
                     AttentionBanner(
                         dueSoon = dueSoon,
+                        today = today,
                         hidden = hideBalance,
                         onClick = { onAction("bills") },
                         modifier = Modifier.animateItem()
@@ -859,16 +890,17 @@ private fun CollapsedBar(
 @Composable
 private fun AttentionBanner(
     dueSoon: List<BillEntity>,
+    today: Long,
     hidden: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val first = dueSoon.first()
     val detail = buildString {
-        append("${first.provider}, ${first.itemName} · ${moneyText(hidden, first.amount)} · ${dueInLabel(first.dueDateMillis)}")
+        append("${first.provider}, ${first.itemName} · ${moneyText(hidden, first.amount)} · ${dueAttentionLabel(first.dueDateMillis, today)}")
         if (dueSoon.size > 1) append(" · +${dueSoon.size - 1} lainnya")
     }
-    val title = "${dueSoon.size} tagihan jatuh tempo ≤ 3 hari"
+    val title = "${dueSoon.size} tagihan perlu perhatian: ${dueAttentionSummary(dueSoon, today)}"
     val shape = RoundedCornerShape(CardRadius)
     Row(
         modifier
@@ -1048,7 +1080,7 @@ private fun BillsCard(
 @Composable
 private fun BillRow(g: BillGroup, hidden: Boolean, onClick: () -> Unit) {
     val overdue = g.days < 0
-    val urgent = g.days <= 3
+    val urgent = g.days <= DUE_SOON_DAYS
     val pillBg = when {
         overdue -> Red.copy(alpha = 0.10f)
         urgent -> Ink

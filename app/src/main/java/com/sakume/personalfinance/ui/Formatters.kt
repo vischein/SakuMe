@@ -27,42 +27,58 @@ fun monthLabel(ms: Long): String = SimpleDateFormat("MMMM yyyy", Locale("id", "I
 
 fun formatDate(ms: Long): String = SimpleDateFormat("dd MMM yyyy", Locale("id", "ID")).format(Date(ms))
 
-fun daysUntilDue(dueDateMillis: Long): Int {
-    val today =
-        Calendar
-            .getInstance()
-            .apply {
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
-    val due =
-        Calendar
-            .getInstance()
-            .apply {
-                timeInMillis = dueDateMillis
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
-    return ((due - today) / 86_400_000L).toInt()
+const val DUE_SOON_DAYS = 3
+
+fun daysUntilDue(dueDateMillis: Long, nowMillis: Long = System.currentTimeMillis()): Int {
+    val zone = java.time.ZoneId.systemDefault()
+    val today = java.time.Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
+    val due = java.time.Instant.ofEpochMilli(dueDateMillis).atZone(zone).toLocalDate()
+    return java.time.temporal.ChronoUnit.DAYS.between(today, due).toInt()
 }
 
-fun urgency(b: BillEntity): String {
-    if (b.isPaid) return "Paid"
-    val days = daysUntilDue(b.dueDateMillis)
+enum class BillUrgency { Paid, Overdue, Critical, Soon, Normal }
+
+fun urgency(b: BillEntity, nowMillis: Long = System.currentTimeMillis()): BillUrgency {
+    if (b.isPaid) return BillUrgency.Paid
+    val days = daysUntilDue(b.dueDateMillis, nowMillis)
     return when {
-        days < 0 -> "Overdue"
-        days <= 2 -> "Critical"
-        days <= 7 -> "Soon"
-        else -> "Normal"
+        days < 0 -> BillUrgency.Overdue
+        days <= 2 -> BillUrgency.Critical
+        days <= 7 -> BillUrgency.Soon
+        else -> BillUrgency.Normal
     }
 }
 
-fun dueInLabel(dueDateMillis: Long): String {
-    val days = daysUntilDue(dueDateMillis)
+fun dueSoonBills(bills: List<BillEntity>, nowMillis: Long = System.currentTimeMillis()): List<BillEntity> =
+    bills
+        .asSequence()
+        .filterNot { it.isPaid }
+        .map { it to daysUntilDue(it.dueDateMillis, nowMillis) }
+        .filter { (_, days) -> days <= DUE_SOON_DAYS }
+        .sortedWith(compareBy<Pair<BillEntity, Int>>({ it.second }, { it.first.dueDateMillis }))
+        .map { it.first }
+        .toList()
+
+fun dueAttentionLabel(dueDateMillis: Long, nowMillis: Long = System.currentTimeMillis()): String {
+    val days = daysUntilDue(dueDateMillis, nowMillis)
+    return when {
+        days < 0 -> "Telat ${-days} hari"
+        days == 0 -> "Jatuh tempo hari ini"
+        else -> "H-$days"
+    }
+}
+
+fun dueAttentionSummary(dueSoon: List<BillEntity>, nowMillis: Long = System.currentTimeMillis()): String {
+    val overdue = dueSoon.count { daysUntilDue(it.dueDateMillis, nowMillis) < 0 }
+    val upcoming = dueSoon.size - overdue
+    return listOfNotNull(
+        if (overdue > 0) "$overdue telat" else null,
+        if (upcoming > 0) "$upcoming jatuh tempo ≤ $DUE_SOON_DAYS hari" else null
+    ).joinToString(" · ")
+}
+
+fun dueInLabel(dueDateMillis: Long, nowMillis: Long = System.currentTimeMillis()): String {
+    val days = daysUntilDue(dueDateMillis, nowMillis)
     return when {
         days < 0 -> "Lewat ${-days} hari"
         days == 0 -> "Hari ini"

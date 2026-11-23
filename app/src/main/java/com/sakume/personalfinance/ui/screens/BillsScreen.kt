@@ -60,6 +60,7 @@ import com.sakume.personalfinance.ui.components.ActionChip
 import com.sakume.personalfinance.ui.components.BillTicketCard
 import com.sakume.personalfinance.ui.components.EmptyHint
 import com.sakume.personalfinance.ui.components.SegmentedChips
+import com.sakume.personalfinance.ui.BillUrgency
 import com.sakume.personalfinance.ui.daysUntilDue
 import com.sakume.personalfinance.ui.dueInLabel
 import com.sakume.personalfinance.ui.formatDate
@@ -421,7 +422,7 @@ private fun BillCard(
     onPay: () -> Unit,
     onToggle: () -> Unit
 ) {
-    val overdue = urgency(bill) == "Overdue"
+    val overdue = urgency(bill) == BillUrgency.Overdue
     val haptics = LocalHapticFeedback.current
 
     BillTicketCard(
