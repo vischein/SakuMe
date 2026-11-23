@@ -112,8 +112,8 @@ fun FinanceApp(
     LaunchedEffect(requestedTab) {
         val t = requestedTab
         if (t != null) {
-            if (t in setOf("Home", "Analisis", "Bills", "Invest", "More")) {
-                if (t == "More") {
+            if (t in setOf("Home", "Analisis", "Bills", "Invest", "Debts", "More")) {
+                if (t == "Debts" || t == "More") {
                     
                     investSegment = 2
                     tab = "Invest"

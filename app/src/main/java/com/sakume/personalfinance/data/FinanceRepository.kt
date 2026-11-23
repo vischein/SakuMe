@@ -587,10 +587,15 @@ class FinanceRepository(private val db: AppDatabase) {
         val amount: Long
     )
 
+    data class ScheduleFailure(
+        val key: String,
+        val message: String
+    )
+
     data class ScheduleRunResult(
         val investmentRuns: List<InvestmentRun>,
         val salaryRuns: List<SalaryRun>,
-        val failures: List<String> = emptyList()
+        val failures: List<ScheduleFailure> = emptyList()
     )
 
     suspend fun processDueSchedules(
@@ -599,7 +604,7 @@ class FinanceRepository(private val db: AppDatabase) {
     ): ScheduleRunResult {
         val investmentRuns = mutableListOf<InvestmentRun>()
         val salaryRuns = mutableListOf<SalaryRun>()
-        val failures = mutableListOf<String>()
+        val failures = mutableListOf<ScheduleFailure>()
         val earliest = now - maxCatchupDays.coerceIn(1, 365) * 86_400_000L
 
         for (initial in dao.allSchedules()) {
@@ -652,7 +657,10 @@ class FinanceRepository(private val db: AppDatabase) {
                         schedule = updated ?: schedule
                     }
                 } catch (e: Exception) {
-                    failures += "${asset?.name ?: "Investasi"}: ${e.message ?: "gagal diproses"}"
+                    failures += ScheduleFailure(
+                        key = failureKey("invest", schedule.id, occurrenceAt, schedule.amount, schedule.accountId, schedule.assetId),
+                        message = "${asset?.name ?: "Investasi"}: ${e.message ?: "gagal diproses"}"
+                    )
 
                     break
                 }
@@ -704,13 +712,22 @@ class FinanceRepository(private val db: AppDatabase) {
                     if (updated == null) break
                     schedule = updated
                 } catch (e: Exception) {
-                    failures += "${schedule.note.ifBlank { "Gaji" }}: ${e.message ?: "gagal diproses"}"
+                    failures += ScheduleFailure(
+                        key = failureKey("salary", schedule.id, occurrenceAt, schedule.amount, schedule.accountId),
+                        message = "${schedule.note.ifBlank { "Gaji" }}: ${e.message ?: "gagal diproses"}"
+                    )
                     break
                 }
                 dueAt = nextSalaryDue(schedule, now)
             }
         }
         return ScheduleRunResult(investmentRuns, salaryRuns, failures)
+    }
+
+    private fun failureKey(vararg parts: Any?): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(parts.joinToString("|").toByteArray())
+        return digest.take(8).joinToString("") { "%02x".format(it) }
     }
 
     private fun nextWeeklyDue(s: ScheduledInvestmentEntity, now: Long): Long? {

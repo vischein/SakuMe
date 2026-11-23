@@ -1,5 +1,6 @@
 package com.sakume.personalfinance.ui
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -20,6 +21,8 @@ object Notify {
     private const val ID_SCHEDULE_FAILURE = 1004
     private const val ID_BILL = 1005
     private const val ID_DEBT = 1006
+
+    private const val PUBLIC_TEXT = "Ada pembaruan di SakuMe"
 
     const val EXTRA_OPEN_TAB = "open_tab"
 
@@ -47,11 +50,13 @@ object Notify {
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL_SCHEDULES, "Jadwal SakuMe", NotificationManager.IMPORTANCE_DEFAULT).apply {
                     description = "Gaji masuk & setor investasi otomatis"
+                    lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 }
             )
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL_BILLS, "Pengingat tagihan & utang", NotificationManager.IMPORTANCE_HIGH).apply {
                     description = "Tagihan, utang, dan piutang yang jatuh tempo hari ini atau segera"
+                    lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 }
             )
         }
@@ -61,7 +66,7 @@ object Notify {
         if (!AppPrefs.notificationsEnabled(context)) return
         if (result.salaryRuns.isNotEmpty()) salary(context, result.salaryRuns)
         if (result.investmentRuns.isNotEmpty()) investment(context, result.investmentRuns)
-        if (result.failures.isNotEmpty()) scheduleFailure(context, result.failures)
+        scheduleFailures(context, result.failures)
     }
 
     private fun salary(context: Context, runs: List<FinanceRepository.SalaryRun>) {
@@ -107,13 +112,23 @@ object Notify {
         }
     }
 
-    private fun scheduleFailure(context: Context, failures: List<String>) {
+    private fun scheduleFailures(context: Context, failures: List<FinanceRepository.ScheduleFailure>) {
+        val current = failures.map { it.key }.toSet()
+        val notified = AppPrefs.notifiedScheduleFailures(context)
+        if (current != notified) AppPrefs.setNotifiedScheduleFailures(context, current)
+        if (current.isEmpty()) {
+            if (notified.isNotEmpty()) NotificationManagerCompat.from(context).cancel(ID_SCHEDULE_FAILURE)
+            return
+        }
+        if ((current - notified).isEmpty()) return
+        val messages = failures.map { it.message }
         post(
             context, CHANNEL_SCHEDULES, ID_SCHEDULE_FAILURE,
             title = "Jadwal otomatis belum berhasil",
-            text = failures.first(),
-            lines = if (failures.size > 1) failures else emptyList(),
-            tab = "Home"
+            text = messages.first(),
+            lines = if (messages.size > 1) messages else emptyList(),
+            tab = "Home",
+            onlyAlertOnce = true
         )
     }
 
@@ -127,10 +142,14 @@ object Notify {
         val text: String
         if (sorted.size == 1) {
             val b = sorted.first()
-            title = "${whenLabel(b.daysLeft, capitalized = true)} jatuh tempo: ${b.provider}"
+            title = if (b.daysLeft < 0) "Tagihan ${b.provider} telat ${-b.daysLeft} hari"
+            else "${whenLabel(b.daysLeft, capitalized = true)} jatuh tempo: ${b.provider}"
             text = billDetail(b)
         } else {
+            val overdue = sorted.count { it.daysLeft < 0 }
             title = when {
+                overdue > 0 && overdue == sorted.size -> "$overdue tagihan telat"
+                overdue > 0 -> "$overdue tagihan telat, ${sorted.size - overdue} lagi jatuh tempo"
                 today.isNotEmpty() && today.size == sorted.size -> "Hari ini ${sorted.size} tagihan jatuh tempo"
                 today.isNotEmpty() -> "Hari ini ${today.size} tagihan jatuh tempo, ${sorted.size - today.size} lagi menyusul"
                 else -> "${sorted.size} tagihan segera jatuh tempo"
@@ -173,7 +192,7 @@ object Notify {
             val kind = if (it.type == "piutang") "Piutang" else "Utang"
             "$prefix$kind ${it.person} — ${debtDetail(it)}"
         }
-        post(context, CHANNEL_BILLS, ID_DEBT, title, text, lines, tab = "More", important = true)
+        post(context, CHANNEL_BILLS, ID_DEBT, title, text, lines, tab = "Debts", important = true)
     }
 
     private fun debtDetail(d: DebtDue): String {
@@ -194,6 +213,7 @@ object Notify {
     private fun whenLabel(daysLeft: Int, capitalized: Boolean): String = when (daysLeft) {
         0 -> if (capitalized) "Hari ini" else "hari ini"
         1 -> if (capitalized) "Besok" else "besok"
+        in Int.MIN_VALUE..-1 -> if (capitalized) "Telat ${-daysLeft} hari" else "telat ${-daysLeft} hari"
         else -> if (capitalized) "$daysLeft hari lagi" else "$daysLeft hari lagi"
     }
 
@@ -212,7 +232,8 @@ object Notify {
         text: String,
         lines: List<String>,
         tab: String,
-        important: Boolean = false
+        important: Boolean = false,
+        onlyAlertOnce: Boolean = false
     ) {
         ensureChannel(context)
         val open = PendingIntent.getActivity(
@@ -228,6 +249,12 @@ object Notify {
             if (lines.isEmpty()) NotificationCompat.BigTextStyle().bigText(text)
             else NotificationCompat.InboxStyle().also { s -> lines.take(6).forEach { s.addLine(it) } }
                 .setSummaryText(text)
+        val publicVersion = NotificationCompat.Builder(context, channel)
+            .setSmallIcon(R.drawable.ic_stat_sakume)
+            .setColor(0xFF1C1C1E.toInt())
+            .setContentTitle("SakuMe")
+            .setContentText(PUBLIC_TEXT)
+            .build()
         val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_stat_sakume)
             .setColor(0xFF1C1C1E.toInt())
@@ -238,6 +265,9 @@ object Notify {
             .setCategory(if (important) NotificationCompat.CATEGORY_REMINDER else NotificationCompat.CATEGORY_STATUS)
             .setPriority(if (important) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(onlyAlertOnce)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion)
             .build()
         try {
             NotificationManagerCompat.from(context).notify(id, notification)

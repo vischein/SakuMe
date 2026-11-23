@@ -12,6 +12,7 @@ object AppPrefs {
     private const val KEY_BILL_REMINDER_HOUR = "bill_reminder_hour"
     private const val KEY_BILL_REMINDER_EARLY = "bill_reminder_early_days"
     private const val KEY_BILL_REMINDER_LAST_DAY = "bill_reminder_last_day"
+    private const val KEY_NOTIFIED_SCHEDULE_FAILURES = "notified_schedule_failures"
     private const val KEY_AUTO_BACKUP = "auto_backup_enabled"
     private const val KEY_AUTO_BACKUP_KEEP = "auto_backup_keep"
     private const val KEY_AUTO_BACKUP_FOLDER = "auto_backup_folder_uri"
@@ -95,6 +96,16 @@ object AppPrefs {
 
     fun setBillReminderLastDay(context: Context, day: Int) {
         prefs(context).edit().putInt(KEY_BILL_REMINDER_LAST_DAY, day).apply()
+    }
+
+    fun notifiedScheduleFailures(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_NOTIFIED_SCHEDULE_FAILURES, null)?.toSet() ?: emptySet()
+
+    fun setNotifiedScheduleFailures(context: Context, keys: Set<String>) {
+        prefs(context).edit().apply {
+            if (keys.isEmpty()) remove(KEY_NOTIFIED_SCHEDULE_FAILURES)
+            else putStringSet(KEY_NOTIFIED_SCHEDULE_FAILURES, HashSet(keys))
+        }.apply()
     }
 
     fun autoBackupEnabled(context: Context): Boolean =

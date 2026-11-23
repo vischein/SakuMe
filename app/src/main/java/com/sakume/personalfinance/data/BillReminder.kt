@@ -7,6 +7,7 @@ import com.sakume.personalfinance.ui.daysUntilDue
 import java.util.Calendar
 
 object BillReminder {
+    private const val OVERDUE_MAX_DAYS = 7
 
     suspend fun check(context: Context, now: Long = System.currentTimeMillis()) {
         if (!AppPrefs.notificationsEnabled(context) || !AppPrefs.billReminderEnabled(context)) return
@@ -23,7 +24,7 @@ object BillReminder {
             .filter { !it.isPaid }
             .mapNotNull { b ->
                 val left = daysUntilDue(b.dueDateMillis)
-                if (left == 0 || (early > 0 && left == early)) {
+                if (left == 0 || (early > 0 && left == early) || (left < 0 && left >= -OVERDUE_MAX_DAYS)) {
                     Notify.BillDue(b.provider, b.itemName, b.installmentIndex, b.tenorMonths, b.amount, left)
                 } else null
             }
