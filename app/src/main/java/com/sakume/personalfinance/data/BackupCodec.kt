@@ -82,6 +82,8 @@ object BackupCodec {
             SecureCrypto.isEncrypted(trimmed) -> {
                 try {
                     SecureCrypto.decrypt(trimmed, SecureStore.getOrCreateMasterKey(context))
+                } catch (e: MasterKeyUnavailableException) {
+                    throw e
                 } catch (e: Exception) {
                     throw IllegalArgumentException(
                         "Backup ini dienkripsi dengan kunci HP/instalasi lain, jadi tidak bisa dibuka di sini. " +

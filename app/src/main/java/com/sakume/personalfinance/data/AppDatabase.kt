@@ -15,6 +15,41 @@ import kotlinx.coroutines.runBlocking
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import java.io.File
 
+internal const val DB_FILE_NAME = "sakume.db"
+
+class MigrationFailedException(message: String, cause: Throwable? = null) : IllegalStateException(message, cause)
+
+internal enum class DbFileKind { MISSING, TOO_SHORT, PLAIN_SQLITE, OTHER, UNREADABLE }
+
+private val SQLITE_PLAIN_MAGIC = "SQLite format 3\u0000".toByteArray(Charsets.US_ASCII)
+
+/**
+ * Menilai file database dari 16 byte pertamanya. Hanya PLAIN_SQLITE yang boleh dimigrasi.
+ * File SQLCipher (terenkripsi) tidak pernah diawali header ini; OTHER = bukan SQLite polos, jangan disentuh.
+ */
+internal fun classifyDbFile(file: File): DbFileKind {
+    if (!file.exists()) return DbFileKind.MISSING
+    return try {
+        file.inputStream().use { input ->
+            val buf = ByteArray(SQLITE_PLAIN_MAGIC.size)
+            var n = 0
+            while (n < buf.size) {
+                val r = input.read(buf, n, buf.size - n)
+                if (r <= 0) break
+                n += r
+            }
+            when {
+                n < buf.size -> DbFileKind.TOO_SHORT
+                buf.contentEquals(SQLITE_PLAIN_MAGIC) -> DbFileKind.PLAIN_SQLITE
+                else -> DbFileKind.OTHER
+            }
+        }
+    } catch (_: Exception) {
+        DbFileKind.UNREADABLE
+    }
+}
+
+
 @Dao
 interface FinanceDao {
     @Query("SELECT * FROM accounts ORDER BY sortOrder ASC, name ASC")
@@ -407,10 +442,34 @@ abstract class AppDatabase : RoomDatabase() {
             MIGRATION_13_14, MIGRATION_14_15
         )
 
+        /**
+         * Memblokir (Keystore, migrasi, buka database). JANGAN dipanggil dari main thread:
+         * UI memakai [open] lewat FinanceViewModel; worker background boleh memanggil ini langsung.
+         */
         fun get(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: openEncrypted(context.applicationContext).also { INSTANCE = it }
             }
+
+        /**
+         * Seperti [get], tetapi juga memaksa database benar-benar terbuka sekarang supaya kegagalan
+         * (kunci, file rusak, migrasi skema) muncul di sini, bukan nanti di tengah query. Panggil di thread IO.
+         * Bila gagal, instance dibuang agar pemanggilan berikutnya (Coba lagi) mulai dari awal.
+         */
+        fun open(context: Context): AppDatabase {
+            val db = get(context)
+            try {
+                db.openHelper.writableDatabase
+            } catch (e: Throwable) {
+                synchronized(this) { if (INSTANCE === db) INSTANCE = null }
+                try {
+                    db.close()
+                } catch (_: Exception) {
+                }
+                throw e
+            }
+            return db
+        }
 
         private fun openEncrypted(context: Context): AppDatabase {
             
@@ -424,7 +483,7 @@ abstract class AppDatabase : RoomDatabase() {
                 migratePlainToEncryptedIfNeeded(context, passphrase)
             }
 
-            return Room.databaseBuilder(context, AppDatabase::class.java, "sakume.db")
+            return Room.databaseBuilder(context, AppDatabase::class.java, DB_FILE_NAME)
                 .openHelperFactory(factory)
                 .addMigrations(*ALL_MIGRATIONS)
                 .build()
@@ -442,33 +501,37 @@ abstract class AppDatabase : RoomDatabase() {
 
 
         private fun migratePlainToEncryptedIfNeeded(context: Context, passphrase: ByteArray) {
-            val dbFile = context.getDatabasePath("sakume.db")
-            if (!dbFile.exists()) {
-                SecureStore.setDbMigrated(context, true)
-                return
+            val dbFile = context.getDatabasePath(DB_FILE_NAME)
+            when (classifyDbFile(dbFile)) {
+                DbFileKind.MISSING -> {
+                    SecureStore.setDbMigrated(context, true)
+                    return
+                }
+                DbFileKind.OTHER -> {
+                    // Bukan SQLite polos (diawali header lain) = terenkripsi. Tidak ada yang perlu dimigrasi dan
+                    // file TIDAK disentuh. Kalau ternyata tidak bisa dibuka (kunci salah, rusak), itu dilaporkan
+                    // oleh pembukaan database biasa, bukan diselesaikan dengan memindahkan file.
+                    SecureStore.setDbMigrated(context, true)
+                    return
+                }
+                DbFileKind.TOO_SHORT, DbFileKind.UNREADABLE -> {
+                    android.util.Log.w("SakuMe", "sakume.db tidak bisa diperiksa headernya; tidak disentuh")
+                    return
+                }
+                DbFileKind.PLAIN_SQLITE -> Unit
             }
 
-            
+            // Header benar-benar SQLite polos: database lama sebelum SQLCipher. Pindahkan, baca, impor ulang.
+            val plainName = "sakume_plain_migrate.db"
+            val plainFile = context.getDatabasePath(plainName)
+            var moved = false
+            var plainDeleted = false
+            var plain: AppDatabase? = null
             try {
-                val probe = Room.databaseBuilder(context, AppDatabase::class.java, "sakume.db")
-                    .openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf()))
-                    .addMigrations(*ALL_MIGRATIONS)
-                    .build()
-                probe.openHelper.writableDatabase
-                probe.close()
-                SecureStore.setDbMigrated(context, true)
-                return
-            } catch (_: Exception) {
-                
-            }
-
-            try {
-                
-                val plainName = "sakume_plain_migrate.db"
-                val plainFile = context.getDatabasePath(plainName)
                 renameDbFiles(dbFile, plainFile)
+                moved = true
 
-                val plain = Room.databaseBuilder(context, AppDatabase::class.java, plainName)
+                plain = Room.databaseBuilder(context, AppDatabase::class.java, plainName)
                     .addMigrations(*ALL_MIGRATIONS)
                     .build()
                 val repo = FinanceRepository(plain)
@@ -487,8 +550,8 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 }
                 plain.close()
+                plain = null
 
-                
                 val safetyDir = File(context.filesDir, "backups").also { if (!it.exists()) it.mkdirs() }
                 val safetyFile = File(
                     safetyDir,
@@ -497,12 +560,11 @@ abstract class AppDatabase : RoomDatabase() {
                 safetyFile.writeText(json)
 
                 deleteDbFiles(plainFile)
+                plainDeleted = true
                 SecureStore.setDbMigrated(context, true)
 
-                
-                
                 try {
-                    val encrypted = Room.databaseBuilder(context, AppDatabase::class.java, "sakume.db")
+                    val encrypted = Room.databaseBuilder(context, AppDatabase::class.java, DB_FILE_NAME)
                         .openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf()))
                         .addMigrations(*ALL_MIGRATIONS)
                         .build()
@@ -519,7 +581,24 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SakuMe", "SQLCipher migration failed: ${e.message}", e)
-                
+                try {
+                    plain?.close()
+                } catch (_: Exception) {
+                }
+                // Gagal sebelum database lama dihapus: kembalikan ke nama semula supaya datanya tetap utuh.
+                if (moved && !plainDeleted && !dbFile.exists()) {
+                    renameDbFiles(plainFile, dbFile)
+                }
+                val detail = e.message ?: e.javaClass.simpleName
+                throw MigrationFailedException(
+                    if (plainDeleted)
+                        "Database lama sudah dipindah ke versi terenkripsi, tetapi langkah akhirnya gagal. " +
+                            "Salinan datamu ada di daftar Backup & Restore (\"Sebelum impor\"). ($detail)"
+                    else
+                        "Database lama gagal dimigrasi ke versi terenkripsi. Data kamu tidak dihapus dan file " +
+                            "database dikembalikan seperti semula. Coba tutup lalu buka SakuMe lagi. ($detail)",
+                    e
+                )
             }
         }
 

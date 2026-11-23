@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.fragment.app.FragmentActivity
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -15,8 +16,11 @@ import com.sakume.personalfinance.data.BackupWorker
 import com.sakume.personalfinance.ui.AppLock
 import com.sakume.personalfinance.ui.AppPrefs
 import com.sakume.personalfinance.ui.FinanceApp
+import com.sakume.personalfinance.ui.DbState
 import com.sakume.personalfinance.ui.FinanceViewModel
 import com.sakume.personalfinance.ui.Notify
+import com.sakume.personalfinance.ui.screens.DbErrorScreen
+import com.sakume.personalfinance.ui.screens.DbLoadingScreen
 import com.sakume.personalfinance.ui.screens.LockScreen
 import com.sakume.personalfinance.ui.theme.NormalizedDensity
 
@@ -36,17 +40,26 @@ class MainActivity : FragmentActivity() {
         AppLock.init(this)
         setContent {
             NormalizedDensity {
+                val dbState by vm.dbState.collectAsState()
                 if (AppLock.isLocked) {
                     LockScreen()
                 } else {
-                    FinanceApp(
-                        vm,
-                        requestedTab = requestedTab,
-                        onTabHandled = {
-                            requestedTab = null
-                            intent?.removeExtra(Notify.EXTRA_OPEN_TAB)
-                        }
-                    )
+                    when (val state = dbState) {
+                        DbState.Loading -> DbLoadingScreen()
+                        is DbState.Failed -> DbErrorScreen(
+                            message = state.message,
+                            onRetry = { vm.openDatabase() },
+                            onClose = { finishAffinity() }
+                        )
+                        DbState.Ready -> FinanceApp(
+                            vm,
+                            requestedTab = requestedTab,
+                            onTabHandled = {
+                                requestedTab = null
+                                intent?.removeExtra(Notify.EXTRA_OPEN_TAB)
+                            }
+                        )
+                    }
                 }
             }
         }

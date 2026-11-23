@@ -5,27 +5,84 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sakume.personalfinance.data.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Status pembukaan database (berat: Keystore, migrasi, SQLCipher), dikerjakan di luar main thread. */
+sealed interface DbState {
+    data object Loading : DbState
+    data object Ready : DbState
+    data class Failed(val message: String) : DbState
+}
+
 class FinanceViewModel(app: Application) : AndroidViewModel(app) {
-    private val repo = FinanceRepository(AppDatabase.get(app))
-    val accounts = repo.accounts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val transactions = repo.transactions.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val bills = repo.bills.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val investments = repo.investments.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val holdings = repo.holdings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val debts = repo.debts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val schedules = repo.schedules.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val salaries = repo.salaries.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val _dbState = MutableStateFlow<DbState>(DbState.Loading)
+    val dbState: StateFlow<DbState> = _dbState
+
+    private val repoFlow = MutableStateFlow<FinanceRepository?>(null)
+
+    /** Hanya dipakai setelah [dbState] = Ready (UI baru ditampilkan saat itu). */
+    private val repo: FinanceRepository
+        get() = repoFlow.value ?: throw IllegalStateException("Database belum siap")
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun <T> listFrom(source: (FinanceRepository) -> Flow<List<T>>): StateFlow<List<T>> =
+        repoFlow
+            .flatMapLatest { r -> if (r == null) flowOf(emptyList()) else source(r) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val accounts = listFrom { it.accounts }
+    val transactions = listFrom { it.transactions }
+    val bills = listFrom { it.bills }
+    val investments = listFrom { it.investments }
+    val holdings = listFrom { it.holdings }
+    val debts = listFrom { it.debts }
+    val schedules = listFrom { it.schedules }
+    val salaries = listFrom { it.salaries }
+
+    private var openJob: Job? = null
 
     init {
-        viewModelScope.launch {
+        openDatabase()
+    }
+
+    /** Membuka database di thread IO. Aman dipanggil ulang ("Coba lagi") setelah gagal. */
+    fun openDatabase() {
+        if (openJob?.isActive == true || _dbState.value == DbState.Ready) return
+        _dbState.value = DbState.Loading
+        openJob = viewModelScope.launch {
             try {
-                repo.cleanupCategoryLabels()
-            } catch (_: Exception) {
+                val db = withContext(Dispatchers.IO) { AppDatabase.open(getApplication()) }
+                val opened = FinanceRepository(db)
+                repoFlow.value = opened
+                _dbState.value = DbState.Ready
+                try {
+                    opened.cleanupCategoryLabels()
+                } catch (_: Exception) {
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                _dbState.value = DbState.Failed(
+                    when (e) {
+                        is MasterKeyUnavailableException, is MigrationFailedException ->
+                            e.message ?: "Database tidak bisa dibuka."
+                        else ->
+                            "Database SakuMe tidak bisa dibuka. SakuMe tidak menghapus atau memindahkan file " +
+                                "database saat gagal seperti ini. Detail teknis: " +
+                                (e.message ?: e.javaClass.simpleName)
+                    }
+                )
             }
         }
     }
