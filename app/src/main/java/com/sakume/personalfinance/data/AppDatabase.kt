@@ -270,7 +270,7 @@ interface FinanceDao {
         SalaryScheduleEntity::class
     ],
     version = 15,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun dao(): FinanceDao
