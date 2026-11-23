@@ -453,6 +453,13 @@ fun FinanceApp(
                             onPay = { b -> dialog = "paybill:${b.id}" },
                             onPayMonth = { list -> dialog = "paymany:${list.joinToString(",") { it.id }}" },
                             onDelete = { b -> dialog = "deletebill:${b.id}" },
+                            onDeleteMany = { ids, onResult ->
+                                vm.deleteBills(
+                                    ids,
+                                    error = { msg -> error = msg; onResult(false) },
+                                    onSuccess = { onResult(true) }
+                                )
+                            },
                             onUnpay = { b -> dialog = "unpaybill:${b.id}" }
                         )
                         "Invest" -> InvestmentScreen(
@@ -706,7 +713,7 @@ fun FinanceApp(
                 title = "Hapus tagihan ini?",
                 confirm = {
                     val id = dialog.substringAfter(":")
-                    bills.firstOrNull { it.id == id }?.let { vm.deleteBill(it) }
+                    bills.firstOrNull { it.id == id }?.let { b -> vm.deleteBill(b) { error = it } }
                     dialog = ""
                 },
                 cancel = { dialog = "" }

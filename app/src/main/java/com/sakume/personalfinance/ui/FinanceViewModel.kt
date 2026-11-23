@@ -150,7 +150,22 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
     fun unpayBill(bill: BillEntity, error: (String) -> Unit = {}) =
         run({ unpayBill(bill.id) }, error)
 
-    fun deleteBill(bill: BillEntity) = run({ deleteBill(bill.id) })
+    fun deleteBill(bill: BillEntity, error: (String) -> Unit = {}) =
+        run({ deleteBill(bill.id) }, error)
+
+    fun deleteBills(ids: List<String>, error: (String) -> Unit, onSuccess: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            val count = try {
+                repo.deleteBills(ids)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error(e.message ?: "Gagal menghapus tagihan")
+                return@launch
+            }
+            onSuccess(count)
+        }
+    }
 
     fun addInvestment(name: String, target: Long?) = run({ addInvestment(name, target) })
 

@@ -89,12 +89,14 @@ fun BillsScreen(
     onPay: (BillEntity) -> Unit,
     onPayMonth: (List<BillEntity>) -> Unit,
     onDelete: (BillEntity) -> Unit,
+    onDeleteMany: (List<String>, (Boolean) -> Unit) -> Unit,
     onUnpay: (BillEntity) -> Unit = {}
 ) {
     var provider by remember(initialProvider) { mutableStateOf(initialProvider) }
     var showAllPaid by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf<Set<Any>>(emptySet()) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
 
     val unpaid = bills.filterNot { it.isPaid }
     val paid = remember(bills) {
@@ -131,7 +133,17 @@ fun BillsScreen(
                     count = selectedBills.size,
                     onClose = { clearSelection() },
                     onSelectAll = { selectedIds = visible.map { it.id }.toSet() },
-                    onDelete = { confirmDelete = true }
+                    onDelete = {
+                        if (!deleting) {
+                            val single = selectedBills.singleOrNull()
+                            if (single != null) {
+                                onDelete(single)
+                                clearSelection()
+                            } else {
+                                confirmDelete = true
+                            }
+                        }
+                    }
                 )
             }
         } else {
@@ -222,10 +234,14 @@ fun BillsScreen(
             title = { Text("Hapus ${selectedBills.size} tagihan?", fontWeight = FontWeight.Bold) },
             text = { Text("Tagihan yang dihapus tidak bisa dikembalikan.") },
             confirmButton = {
-                TextButton(onClick = {
-                    selectedBills.forEach(onDelete)
-                    clearSelection()
+                TextButton(enabled = !deleting, onClick = {
+                    val ids = selectedBills.map { it.id }
                     confirmDelete = false
+                    deleting = true
+                    onDeleteMany(ids) { success ->
+                        deleting = false
+                        if (success) clearSelection()
+                    }
                 }) { Text("Hapus", color = Red, fontWeight = FontWeight.SemiBold) }
             },
             dismissButton = {

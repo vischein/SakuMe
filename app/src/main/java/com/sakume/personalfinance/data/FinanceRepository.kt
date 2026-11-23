@@ -355,9 +355,22 @@ class FinanceRepository(private val db: AppDatabase) {
         }
     }
 
-    suspend fun deleteBill(billId: String) = db.withTransaction {
+    suspend fun deleteBill(billId: String) {
+        db.withTransaction { deleteBillInternal(billId) }
+    }
+
+    suspend fun deleteBills(ids: List<String>): Int = db.withTransaction {
+        val requested = ids.filter { it.isNotBlank() }.distinct()
+        require(requested.isNotEmpty()) { "Tidak ada tagihan yang dipilih" }
+        var deleted = 0
+        for (id in requested) deleted += deleteBillInternal(id)
+        require(deleted > 0) { "Tagihan tidak ditemukan" }
+        deleted
+    }
+
+    private suspend fun deleteBillInternal(billId: String): Int {
         val family = dao.billFamily(billId)
-        if (family.isEmpty()) return@withTransaction
+        if (family.isEmpty()) return 0
 
         family.filter { it.isPaid }.forEach { bill ->
             val txId = bill.paymentTransactionId
@@ -369,6 +382,7 @@ class FinanceRepository(private val db: AppDatabase) {
             }
         }
         family.forEach { dao.deleteBill(it.id) }
+        return family.size
     }
 
     suspend fun addInvestment(name: String, target: Long?) = db.withTransaction {
