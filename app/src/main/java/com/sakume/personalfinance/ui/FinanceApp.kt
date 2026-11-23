@@ -286,7 +286,9 @@ fun FinanceApp(
                             initialFilter = historyFilter,
                             onDeleteMany = { ids ->
                                 dialog = "deletetxmany:${ids.joinToString(",")}"
-                            }
+                            },
+                            onEditTransaction = { tx -> dialog = "edittransaction:${tx.id}" },
+                            onDeleteTransaction = { tx -> dialog = "deletetx:${tx.id}" }
                         )
                     } else if (subScreen == "backup") {
                         BackupScreen(
@@ -607,11 +609,13 @@ fun FinanceApp(
                 extraOptionSecondary = { n -> accounts.firstOrNull { it.name == n }?.let { rupiah(it.balance) } },
                 extraOptionLabel = "Rekening",
                 requiredFields = setOf(1),
+                includeTransactionDate = true,
                 onDismiss = { dialog = "" }
             ) { v ->
                 val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
-                val type = v.getOrElse(2) { "expense" }
-                val accName = v.getOrElse(3) { accounts.firstOrNull()?.name.orEmpty() }
+                val date = v.getOrNull(2)?.toLongOrNull() ?: System.currentTimeMillis()
+                val type = v.getOrElse(3) { "expense" }
+                val accName = v.getOrElse(4) { accounts.firstOrNull()?.name.orEmpty() }
                 val acc = accounts.firstOrNull { it.name == accName }
                 val note = v.getOrElse(1) { "" }
                 when {
@@ -624,12 +628,79 @@ fun FinanceApp(
                             amount,
                             note.ifBlank { if (type == "income") "Pemasukan" else "Pengeluaran" },
                             acc.id,
-                            System.currentTimeMillis(),
+                            date,
                             note
                         ) { error = it }
                         dialog = ""
                     }
                 }
+            }
+
+            dialog.startsWith("edittransaction:") -> {
+                val tx = transactions.firstOrNull { it.id == dialog.substringAfter(":") }
+                if (tx == null) {
+                    dialog = ""
+                } else {
+                    val linked = tx.transferGroupId != null || tx.debtId != null ||
+                        tx.investmentAssetId != null || tx.feeAssetId != null ||
+                        tx.category.startsWith("Tagihan ", true) ||
+                        tx.category.equals("Investasi", true) ||
+                        tx.note.startsWith("Setor ke ", true) ||
+                        tx.note.startsWith("Pelunasan ", true)
+                    if (linked || (tx.type != "income" && tx.type != "expense")) {
+                        MessageDialog(
+                            title = "Transaksi tidak dapat diedit",
+                            message = "Transaksi ini terkait fitur lain. Ubah melalui layar asalnya.",
+                            onDismiss = { dialog = "" }
+                        )
+                    } else {
+                        FormDialog(
+                            title = "Edit transaksi",
+                            fields = listOf("Nominal", "Catatan"),
+                            options = listOf(tx.type),
+                            optionLabel = "",
+                            optionBeforeField = 0,
+                            optionDisplay = { if (it == "expense") "Pengeluaran" else "Pemasukan" },
+                            extraOptions = accounts.map { it.name },
+                            initialExtraIndex = accounts.indexOfFirst { it.id == tx.accountId }.coerceAtLeast(0),
+                            extraOptionSecondary = { n -> accounts.firstOrNull { it.name == n }?.let { rupiah(it.balance) } },
+                            extraOptionLabel = "Rekening",
+                            initialValues = listOf(tx.amount.toString(), tx.note),
+                            includeTransactionDate = true,
+                            initialTransactionDateMillis = tx.dateMillis,
+                            requiredFields = setOf(0, 1),
+                            onDismiss = { dialog = "" }
+                        ) { v ->
+                            val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                            val date = v.getOrNull(2)?.toLongOrNull() ?: tx.dateMillis
+                            val type = v.getOrElse(3) { tx.type }
+                            val accountName = v.getOrElse(4) { accounts.firstOrNull { it.id == tx.accountId }?.name.orEmpty() }
+                            val account = accounts.firstOrNull { it.name == accountName }
+                            if (type != tx.type) {
+                                error = "Jenis transaksi tidak dapat diubah saat edit"
+                            } else if (account == null) {
+                                error = "Pilih rekening"
+                            } else {
+                                val note = v[1].trim()
+                                vm.updateTransaction(
+                                    tx.id, amount,
+                                    note.ifBlank { if (type == "income") "Pemasukan" else "Pengeluaran" },
+                                    note, date, account.id
+                                ) { error = it }
+                                dialog = ""
+                            }
+                        }
+                    }
+                }
+            }
+
+            dialog.startsWith("deletetx:") -> {
+                val txId = dialog.substringAfter(":")
+                ConfirmDialog(
+                    title = "Hapus transaksi? Saldo rekening akan disesuaikan kembali.",
+                    confirm = { vm.deleteTransaction(txId) { error = it }; dialog = "" },
+                    cancel = { dialog = "" }
+                )
             }
 
             dialog == "transfer" -> FormDialog(

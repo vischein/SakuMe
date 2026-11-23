@@ -1,6 +1,7 @@
 package com.sakume.personalfinance.ui.components
 
 import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +26,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.DatePicker as MaterialDatePicker
+import androidx.compose.material3.DatePickerDialog as MaterialDatePickerDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -32,6 +37,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -286,6 +292,7 @@ private fun SheetButton(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FormDialog(
     title: String,
@@ -314,6 +321,8 @@ fun FormDialog(
     dueDateLabel: String = "Tanggal jatuh tempo",
     dueDateOptional: Boolean = false,
     initialDueDateMillis: Long? = null,
+    includeTransactionDate: Boolean = false,
+    initialTransactionDateMillis: Long? = null,
     initialValues: List<String> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (List<String>) -> Unit
@@ -342,11 +351,71 @@ fun FormDialog(
         mutableStateOf<Long?>(initialDueDateMillis ?: if (dueDateOptional) null else cal.timeInMillis)
     }
     val context = LocalContext.current
+    val initialTxDate = initialTransactionDateMillis ?: System.currentTimeMillis()
+    var transactionDateMillis by remember(title) { mutableLongStateOf(initialTxDate) }
+    val hasCustomInitialTransactionDate = remember(title) {
+        initialTransactionDateMillis?.let { initial ->
+            val initialCalendar = Calendar.getInstance().apply { timeInMillis = initial }
+            val todayCalendar = Calendar.getInstance()
+            initialCalendar.get(Calendar.YEAR) != todayCalendar.get(Calendar.YEAR) ||
+                initialCalendar.get(Calendar.DAY_OF_YEAR) != todayCalendar.get(Calendar.DAY_OF_YEAR) ||
+                initialCalendar.get(Calendar.HOUR_OF_DAY) != 0 ||
+                initialCalendar.get(Calendar.MINUTE) != 0
+        } ?: false
+    }
+    var showTransactionDateOptions by remember(title) {
+        mutableStateOf(hasCustomInitialTransactionDate)
+    }
+    var showTransactionDatePicker by remember { mutableStateOf(false) }
+    var includeTransactionTime by remember(title) {
+        mutableStateOf(initialTransactionDateMillis?.let {
+            val c = Calendar.getInstance().apply { timeInMillis = it }
+            c.get(Calendar.HOUR_OF_DAY) != 0 || c.get(Calendar.MINUTE) != 0
+        } ?: false)
+    }
+    var transactionHour by remember(title) {
+        mutableIntStateOf(Calendar.getInstance().apply { timeInMillis = initialTxDate }.get(Calendar.HOUR_OF_DAY))
+    }
+    var transactionMinute by remember(title) {
+        mutableIntStateOf(Calendar.getInstance().apply { timeInMillis = initialTxDate }.get(Calendar.MINUTE))
+    }
+    val pickerInitialDateMillis = remember(title) {
+        val local = Calendar.getInstance().apply { timeInMillis = transactionDateMillis }
+        Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+            set(local.get(Calendar.YEAR), local.get(Calendar.MONTH), local.get(Calendar.DAY_OF_MONTH), 0, 0, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+    val transactionDateState = rememberDatePickerState(initialSelectedDateMillis = pickerInitialDateMillis)
+
+    val hasCustomTransactionDate = remember(
+        transactionDateMillis,
+        includeTransactionTime,
+        transactionHour,
+        transactionMinute
+    ) {
+        val selectedCal = Calendar.getInstance().apply { timeInMillis = transactionDateMillis }
+        val todayCal = Calendar.getInstance()
+        val isDifferentDay = selectedCal.get(Calendar.YEAR) != todayCal.get(Calendar.YEAR) ||
+            selectedCal.get(Calendar.DAY_OF_YEAR) != todayCal.get(Calendar.DAY_OF_YEAR)
+        isDifferentDay || includeTransactionTime
+    }
 
     fun formatDue(ms: Long): String {
         val c = Calendar.getInstance().apply { timeInMillis = ms }
         val months = arrayOf("Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des")
         return "%02d %s %d".format(c.get(Calendar.DAY_OF_MONTH), months[c.get(Calendar.MONTH)], c.get(Calendar.YEAR))
+    }
+
+    fun formatCompactTxDate(ms: Long): String {
+        val c = Calendar.getInstance().apply { timeInMillis = ms }
+        val months = arrayOf("Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des")
+        val datePart = "%02d %s".format(c.get(Calendar.DAY_OF_MONTH), months[c.get(Calendar.MONTH)])
+        return if (includeTransactionTime) {
+            "$datePart · %02d:%02d".format(transactionHour, transactionMinute)
+        } else {
+            datePart
+        }
     }
 
     val optionsBlock: @Composable () -> Unit = {
@@ -374,7 +443,107 @@ fun FormDialog(
     }
 
     AppBottomSheet(onDismiss) {
-        Text(title, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Ink)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                title,
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+                color = Ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            if (includeTransactionDate) {
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = when {
+                        showTransactionDateOptions -> "Selesai"
+                        hasCustomTransactionDate -> formatCompactTxDate(transactionDateMillis)
+                        else -> "Atur tanggal"
+                    },
+                    color = Muted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { showTransactionDateOptions = !showTransactionDateOptions }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+        if (includeTransactionDate && showTransactionDateOptions) {
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)
+            ) {
+                Text(
+                    text = formatDue(transactionDateMillis),
+                    color = Muted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(FieldBg)
+                        .clickable { showTransactionDatePicker = true }
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                )
+                Text(
+                    text = if (includeTransactionTime) {
+                        "%02d:%02d".format(transactionHour, transactionMinute)
+                    } else {
+                        "+ Jam"
+                    },
+                    color = Muted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(FieldBg)
+                        .clickable {
+                            if (!includeTransactionTime) {
+                                val now = Calendar.getInstance()
+                                transactionHour = now.get(Calendar.HOUR_OF_DAY)
+                                transactionMinute = now.get(Calendar.MINUTE)
+                                includeTransactionTime = true
+                            }
+                            TimePickerDialog(
+                                context,
+                                { _, hour, minute ->
+                                    transactionHour = hour
+                                    transactionMinute = minute
+                                },
+                                transactionHour,
+                                transactionMinute,
+                                true
+                            ).show()
+                        }
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                )
+                if (includeTransactionTime) {
+                    Text(
+                        text = "×",
+                        color = Muted,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                includeTransactionTime = false
+                                transactionHour = 0
+                                transactionMinute = 0
+                            }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(14.dp))
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             fields.forEachIndexed { i, field ->
@@ -483,12 +652,47 @@ fun FormDialog(
             SheetButton("Simpan", {
                 val result = values.toMutableList()
                 if (includeDueDate) result.add(dueDateMillis?.toString().orEmpty())
+                if (includeTransactionDate) {
+                    val date = Calendar.getInstance().apply {
+                        timeInMillis = transactionDateMillis
+                        set(Calendar.HOUR_OF_DAY, if (includeTransactionTime) transactionHour else 0)
+                        set(Calendar.MINUTE, if (includeTransactionTime) transactionMinute else 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }.timeInMillis
+                    result.add(date.toString())
+                }
                 if (options.isNotEmpty()) result.add(options.getOrElse(selectedOpt) { options.first() })
                 if (extraOptions.isNotEmpty()) result.add(extraOptions.getOrElse(selectedExtra) { extraOptions.first() })
                 if (tertiaryOptions.isNotEmpty()) result.add(tertiaryOptions.getOrElse(selectedTertiary) { tertiaryOptions.first() })
                 onSave(result)
             }, Modifier.weight(1f), primary = true,
                 enabled = requiredFields.all { values[it].isNotBlank() })
+        }
+    }
+
+    if (includeTransactionDate && showTransactionDatePicker) {
+        MaterialDatePickerDialog(
+            onDismissRequest = { showTransactionDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    transactionDateState.selectedDateMillis?.let { selected ->
+                        transactionDateMillis = Calendar.getInstance().apply {
+                            timeInMillis = selected
+                            set(Calendar.HOUR_OF_DAY, if (includeTransactionTime) transactionHour else 0)
+                            set(Calendar.MINUTE, if (includeTransactionTime) transactionMinute else 0)
+                            set(Calendar.SECOND, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }.timeInMillis
+                    }
+                    showTransactionDatePicker = false
+                }) { Text("Pilih") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTransactionDatePicker = false }) { Text("Batal") }
+            }
+        ) {
+            MaterialDatePicker(state = transactionDateState)
         }
     }
 }

@@ -151,6 +151,16 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
         error: (String) -> Unit
     ) = run({ addTransaction(type, amount, category, accountId, date, note) }, error)
 
+    fun updateTransaction(
+        id: String,
+        amount: Long,
+        category: String,
+        note: String,
+        date: Long,
+        accountId: String,
+        error: (String) -> Unit
+    ) = run({ updateTransaction(id, amount, category, note, date, accountId) }, error)
+
     fun transfer(from: String, to: String, amount: Long, note: String = "", error: (String) -> Unit) =
         run({ transfer(from, to, amount, note) }, error)
 

@@ -279,6 +279,7 @@ fun TransactionRow(
     grouped: Boolean = false,
     showDate: Boolean = true,
     onLongPress: (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
     hideAmount: Boolean = false,
     selectionShape: Shape? = null,
     selectedAbove: Boolean = false
@@ -323,12 +324,12 @@ fun TransactionRow(
             onLongClick = onLongPress,
             onClick = onToggleSelect!!
         )
-        onLongPress != null -> Modifier.combinedClickable(
+        onLongPress != null || onClick != null -> Modifier.combinedClickable(
             interactionSource = remember { MutableInteractionSource() },
             indication = null,
             onLongClickLabel = "Pilih transaksi",
             onLongClick = onLongPress,
-            onClick = {}
+            onClick = { onClick?.invoke() }
         )
         else -> Modifier
     }

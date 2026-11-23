@@ -135,6 +135,65 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.putTransaction(TransactionEntity(id(), type, amount, category, accountId, date, note))
     }
 
+    suspend fun updateTransaction(
+        txId: String,
+        amount: Long,
+        category: String,
+        note: String,
+        date: Long,
+        accountId: String
+    ) = db.withTransaction {
+        require(amount > 0L) { "Nominal harus lebih dari nol" }
+        require(category.isNotBlank()) { "Kategori transaksi wajib diisi" }
+        require(date > 0L) { "Tanggal transaksi tidak valid" }
+        val old = dao.transaction(txId) ?: error("Transaksi tidak ditemukan")
+        require(old.type == "income" || old.type == "expense") {
+            "Transaksi terkait tidak dapat diedit dari riwayat. Ubah melalui layar asalnya."
+        }
+        require(old.transferGroupId == null) {
+            "Transaksi transfer tidak dapat diedit dari riwayat. Ubah melalui menu Transfer."
+        }
+        require(old.debtId == null && old.investmentAssetId == null && old.feeAssetId == null) {
+            "Transaksi pembayaran utang/piutang atau investasi tidak dapat diedit dari riwayat. Ubah melalui layar asalnya."
+        }
+        require(dao.allBills().none { it.paymentTransactionId == txId }) {
+            "Transaksi pembayaran tagihan tidak dapat diedit dari riwayat. Ubah melalui layar Tagihan."
+        }
+        require(dao.allDebts().none { it.paymentTransactionId == txId }) {
+            "Transaksi pelunasan utang/piutang tidak dapat diedit dari riwayat. Ubah melalui layar Utang/Piutang."
+        }
+        require(dao.allContributions().none { it.transactionId == txId }) {
+            "Transaksi kontribusi investasi tidak dapat diedit dari riwayat. Ubah melalui layar Investasi."
+        }
+
+        val oldAccount = dao.account(old.accountId) ?: error("Rekening transaksi lama tidak ditemukan")
+        val newAccount = dao.account(accountId) ?: error("Rekening tujuan tidak ditemukan")
+        val oldDelta = if (old.type == "income") old.amount else -old.amount
+        val newDelta = if (old.type == "income") amount else -amount
+        val balances = mutableMapOf<String, Long>()
+        balances[oldAccount.id] = oldAccount.balance - oldDelta
+        balances[newAccount.id] = (balances[newAccount.id] ?: newAccount.balance) + newDelta
+        balances.forEach { (id, balance) ->
+            require(balance >= 0L) {
+                val account = if (id == oldAccount.id) oldAccount else newAccount
+                "Perubahan ditolak: saldo ${account.name} tidak boleh negatif (hasil ${rupiahText(balance)})."
+            }
+        }
+        if (oldAccount.id == newAccount.id) {
+            dao.putAccount(oldAccount.copy(balance = balances.getValue(oldAccount.id)))
+        } else {
+            dao.putAccount(oldAccount.copy(balance = balances.getValue(oldAccount.id)))
+            dao.putAccount(newAccount.copy(balance = balances.getValue(newAccount.id)))
+        }
+        dao.putTransaction(old.copy(
+            amount = amount,
+            category = category.trim(),
+            note = note.trim(),
+            dateMillis = date,
+            accountId = accountId
+        ))
+    }
+
     suspend fun deleteTransactions(txIds: List<String>) = db.withTransaction {
         val found = mutableListOf<TransactionEntity>()
         for (id in txIds.filter { it.isNotBlank() }.distinct()) {

@@ -238,4 +238,103 @@ class FinanceRepositoryTest {
         repo.importJson(BackupCodec.encode(backup))
         assertEquals(listOf("restored"), db.dao().allAccounts().map { it.id })
     }
+    @Test fun updateTransactionAdjustsBalanceWhenExpenseAmountIncreasesOrDecreases() = runTest {
+        repo.addTransaction("expense", 10_000, "Belanja", cashId, 1_700_000_000_000, "Awal")
+        val tx = db.dao().allTransactions().single()
+        repo.updateTransaction(tx.id, 25_000, "Belanja", "Naik", tx.dateMillis, cashId)
+        assertEquals(75_000L, db.dao().account(cashId)!!.balance)
+        repo.updateTransaction(tx.id, 5_000, "Belanja", "Turun", tx.dateMillis, cashId)
+        assertEquals(95_000L, db.dao().account(cashId)!!.balance)
+        assertEquals(5_000L, db.dao().transaction(tx.id)!!.amount)
+    }
+
+    @Test fun updateTransactionMovesBalanceBetweenAccountsAtomically() = runTest {
+        repo.addAccount("Bank", "Bank", 20_000)
+        val bank = db.dao().allAccounts().first { it.name == "Bank" }
+        repo.addTransaction("expense", 15_000, "Belanja", cashId, 1_700_000_000_000, "Awal")
+        val tx = db.dao().allTransactions().single()
+        repo.updateTransaction(tx.id, 12_000, "Belanja", "Pindah", tx.dateMillis, bank.id)
+        assertEquals(100_000L, db.dao().account(cashId)!!.balance)
+        assertEquals(8_000L, db.dao().account(bank.id)!!.balance)
+        assertEquals(bank.id, db.dao().transaction(tx.id)!!.accountId)
+    }
+
+    @Test fun updateTransactionChangesDateAndPreservesTimeAndOtherFields() = runTest {
+        val oldDate = 1_700_000_000_000L
+        val newDate = 1_710_000_000_123L
+        repo.addTransaction("income", 5_000, "Bonus", cashId, oldDate, "Catatan")
+        val tx = db.dao().allTransactions().single()
+        repo.updateTransaction(tx.id, 5_000, "Bonus", "Catatan baru", newDate, cashId)
+        val updated = db.dao().transaction(tx.id)!!
+        assertEquals(newDate, updated.dateMillis)
+        assertEquals("Catatan baru", updated.note)
+        assertEquals(105_000L, db.dao().account(cashId)!!.balance)
+    }
+
+    @Test fun updateTransactionRejectsNegativeFinalBalanceWithoutPartialChanges() = runTest {
+        repo.addTransaction("expense", 20_000, "Belanja", cashId, 1_700_000_000_000, "")
+        val tx = db.dao().allTransactions().single()
+        assertThrows(IllegalArgumentException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                repo.updateTransaction(tx.id, 120_000, "Belanja", "Naik", tx.dateMillis, cashId)
+            }
+        }
+        assertEquals(80_000L, db.dao().account(cashId)!!.balance)
+        assertEquals(20_000L, db.dao().transaction(tx.id)!!.amount)
+    }
+
+    @Test fun updateTransactionRejectsLinkedBillPayment() = runTest {
+        val bill = BillEntity("linked-bill", "PLN", "Listrik", 10_000, 1_700_000_000_000)
+        db.dao().putBill(bill)
+        repo.payBill(bill.id, cashId)
+        val tx = db.dao().allTransactions().single()
+        assertThrows(IllegalArgumentException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                repo.updateTransaction(tx.id, 9_000, "Listrik", "Edit", tx.dateMillis, cashId)
+            }
+        }
+        assertEquals(90_000L, db.dao().account(cashId)!!.balance)
+        assertTrue(db.dao().bill(bill.id)!!.isPaid)
+    }
+
+    @Test fun updateTransactionRejectsInvestmentContribution() = runTest {
+        repo.addInvestment("Dana darurat", null)
+        val asset = db.dao().allInvestments().single()
+        repo.contribute(asset.id, cashId, 10_000)
+        val tx = db.dao().allTransactions().single()
+        assertThrows(IllegalArgumentException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                repo.updateTransaction(tx.id, 5_000, "Investasi", "Edit", tx.dateMillis, cashId)
+            }
+        }
+        assertEquals(90_000L, db.dao().account(cashId)!!.balance)
+    }
+
+    @Test fun updateTransactionRejectsTransferLeg() = runTest {
+        repo.addAccount("Bank", "Bank", 0)
+        val bank = db.dao().allAccounts().first { it.name == "Bank" }
+        repo.transfer(cashId, bank.id, 10_000)
+        val tx = db.dao().allTransactions().first()
+        assertThrows(IllegalArgumentException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                repo.updateTransaction(tx.id, 5_000, "Transfer", "", tx.dateMillis, cashId)
+            }
+        }
+        assertEquals(90_000L, db.dao().account(cashId)!!.balance)
+        assertEquals(10_000L, db.dao().account(bank.id)!!.balance)
+    }
+
+    @Test fun updateTransactionRejectsDebtPayment() = runTest {
+        repo.addDebt("utang", "Teman", "Pinjaman", 20_000)
+        val debt = db.dao().allDebts().single()
+        repo.payDebt(debt.id, cashId, 5_000)
+        val tx = db.dao().allTransactions().single()
+        assertThrows(IllegalArgumentException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                repo.updateTransaction(tx.id, 4_000, tx.category, tx.note, tx.dateMillis, cashId)
+            }
+        }
+        assertEquals(95_000L, db.dao().account(cashId)!!.balance)
+    }
+
 }

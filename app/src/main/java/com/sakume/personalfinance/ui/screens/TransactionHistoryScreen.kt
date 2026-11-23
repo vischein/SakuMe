@@ -61,7 +61,10 @@ import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.Button
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -105,6 +108,7 @@ import com.sakume.personalfinance.ui.components.TransactionRow
 import com.sakume.personalfinance.ui.dayHeaderLabel
 import com.sakume.personalfinance.ui.displayCategory
 import com.sakume.personalfinance.ui.formatDate
+import com.sakume.personalfinance.ui.formatTime
 import com.sakume.personalfinance.ui.rupiah
 import com.sakume.personalfinance.ui.startOfDayMillis
 import com.sakume.personalfinance.ui.startOfMonthMillis
@@ -209,13 +213,15 @@ private fun cardShape(index: Int, lastIndex: Int): RoundedCornerShape {
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionHistoryScreen(
     accounts: List<AccountEntity>,
     tx: List<TransactionEntity>,
     onBack: () -> Unit,
     onDeleteMany: (List<String>) -> Unit = {},
+    onEditTransaction: (TransactionEntity) -> Unit = {},
+    onDeleteTransaction: (TransactionEntity) -> Unit = {},
     accountFilter: String? = null,
     initialFilter: HistoryFilter? = null
 ) {
@@ -227,6 +233,7 @@ fun TransactionHistoryScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var selectionMode by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(setOf<String>()) }
+    var selectedDetail by remember { mutableStateOf<TransactionEntity?>(null) }
 
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
@@ -515,7 +522,8 @@ fun TransactionHistoryScreen(
                                 onToggleSelect = {
                                     selected = if (e.t.id in selected) selected - e.t.id else selected + e.t.id
                                 },
-                                onLongPress = if (selectionMode) null else ({ enterSelection(e.t.id) })
+                                onLongPress = if (selectionMode) null else ({ enterSelection(e.t.id) }),
+                                onClick = if (selectionMode) null else ({ selectedDetail = e.t })
                             )
                             if (index != g.items.lastIndex) {
                                 HorizontalDivider(
@@ -578,6 +586,50 @@ fun TransactionHistoryScreen(
                     Icon(Icons.Filled.Delete, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Hapus", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        selectedDetail?.let { detail ->
+            val linked = detail.transferGroupId != null ||
+                detail.debtId != null || detail.investmentAssetId != null || detail.feeAssetId != null ||
+                detail.category.startsWith("Tagihan ", true) ||
+                detail.category.equals("Investasi", true) ||
+                detail.note.startsWith("Setor ke ", true) ||
+                detail.note.startsWith("Pelunasan ", true)
+            ModalBottomSheet(
+                onDismissRequest = { selectedDetail = null },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp)) {
+                    Text(detail.note.ifBlank { detail.category }, color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(if (detail.type == "income") "Pemasukan" else if (detail.type == "expense") "Pengeluaran" else "Transfer", color = Muted, fontSize = 13.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Text(rupiah(detail.amount), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Text("${formatDate(detail.dateMillis)} · ${formatTime(detail.dateMillis)}", color = Muted, fontSize = 13.sp)
+                    Text("Rekening: ${accounts.firstOrNull { it.id == detail.accountId }?.name ?: "Tidak diketahui"}", color = Muted, fontSize = 13.sp)
+                    if (linked) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Transaksi ini terhubung dengan fitur lain dan tidak dapat diedit atau dihapus dari riwayat. Buka layar asalnya untuk mengubah transaksi.",
+                            color = Muted,
+                            fontSize = 13.sp
+                        )
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = { selectedDetail = null; onDeleteTransaction(detail) },
+                            modifier = Modifier.weight(1f),
+                            enabled = !linked,
+                            colors = ButtonDefaults.buttonColors(containerColor = Red)
+                        ) { Text("Hapus") }
+                        Button(
+                            onClick = { selectedDetail = null; onEditTransaction(detail) },
+                            modifier = Modifier.weight(1f),
+                            enabled = !linked
+                        ) { Text("Edit") }
+                    }
+                    Spacer(Modifier.height(18.dp))
                 }
             }
         }
