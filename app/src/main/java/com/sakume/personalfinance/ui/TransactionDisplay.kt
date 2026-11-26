@@ -1,6 +1,7 @@
 package com.sakume.personalfinance.ui
 
 import com.sakume.personalfinance.data.AccountEntity
+import com.sakume.personalfinance.data.CategoryIds
 import com.sakume.personalfinance.data.TransactionEntity
 
 fun buildDisplayTransactions(
@@ -51,7 +52,8 @@ fun buildDisplayTransactions(
                     out.copy(
                         type = "expense",
                         category = "Tarik tunai",
-                        note = "Tarik tunai"
+                        note = "Tarik tunai",
+                        categoryId = CategoryIds.TUNAI
                     )
                 }
 
@@ -59,7 +61,8 @@ fun buildDisplayTransactions(
                     (input ?: item).copy(
                         type = "income",
                         category = "Setor tunai",
-                        note = "Setor tunai"
+                        note = "Setor tunai",
+                        categoryId = CategoryIds.TUNAI
                     )
                 }
 

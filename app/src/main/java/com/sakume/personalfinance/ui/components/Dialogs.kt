@@ -67,7 +67,13 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import com.sakume.personalfinance.data.AccountEntity
+import com.sakume.personalfinance.data.CategoryEntity
+import com.sakume.personalfinance.data.CategoryIds
+import com.sakume.personalfinance.ui.categoryColor
+import com.sakume.personalfinance.ui.categoryIconVector
 import com.sakume.personalfinance.data.SecureCrypto
 import com.sakume.personalfinance.ui.AppPrefs
 import com.sakume.personalfinance.ui.rupiah
@@ -292,6 +298,23 @@ private fun SheetButton(
     }
 }
 
+@Composable
+fun CategoryGrid(
+    choices: List<CategoryEntity>,
+    selectedId: String?,
+    onSelect: (String) -> Unit
+) {
+    if (choices.isEmpty()) return
+    val selectedIndex = choices.indexOfFirst { it.id == selectedId }
+    SegmentedChips(
+        options = choices.map { it.name },
+        selectedIndex = selectedIndex,
+        leadingIcons = choices.map { categoryIconVector(it.icon) },
+        minSegmentWidth = 72.dp,
+        onSelect = { onSelect(choices[it].id) }
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FormDialog(
@@ -324,9 +347,13 @@ fun FormDialog(
     includeTransactionDate: Boolean = false,
     initialTransactionDateMillis: Long? = null,
     initialValues: List<String> = emptyList(),
+    categoryOptionsFor: ((String) -> List<CategoryEntity>)? = null,
+    initialCategoryId: String? = null,
+    categoryAfterField: Int = 0,
     onDismiss: () -> Unit,
     onSave: (List<String>) -> Unit
 ) {
+    var pickedCategoryId by remember(title) { mutableStateOf(initialCategoryId) }
     val values = remember(title) {
         mutableStateListOf<String>().apply {
             fields.indices.forEach { i -> add(initialValues.getOrElse(i) { "" }) }
@@ -417,6 +444,13 @@ fun FormDialog(
             datePart
         }
     }
+
+    val categoryChoices = categoryOptionsFor
+        ?.invoke(options.getOrElse(selectedOpt) { options.firstOrNull().orEmpty() })
+        .orEmpty()
+        .sortedBy { it.sortOrder }
+    val effectiveCategoryId: String? =
+        pickedCategoryId?.takeIf { id -> categoryChoices.any { it.id == id } }
 
     val optionsBlock: @Composable () -> Unit = {
         if (options.isNotEmpty()) {
@@ -577,6 +611,9 @@ fun FormDialog(
                         autoThousand = autoZeros
                     )
                 }
+                if (categoryOptionsFor != null && i == categoryAfterField) {
+                    CategoryGrid(categoryChoices, effectiveCategoryId) { pickedCategoryId = it }
+                }
                 if (includeDueDate && i == minOf(1, fields.lastIndex)) {
                     Text(dueDateLabel, color = Muted, fontSize = 12.sp)
                     Row(
@@ -637,6 +674,9 @@ fun FormDialog(
                 }
             }
             if (optionBeforeField !in fields.indices) optionsBlock()
+            if (categoryOptionsFor != null && categoryAfterField !in fields.indices) {
+                CategoryGrid(categoryChoices, effectiveCategoryId) { pickedCategoryId = it }
+            }
             if (extraOptions.isNotEmpty()) {
                 Text(extraOptionLabel, color = Muted, fontSize = 12.sp)
                 OptionCardList(extraOptions, selectedExtra, secondary = extraOptionSecondary) { selectedExtra = it }
@@ -665,9 +705,11 @@ fun FormDialog(
                 if (options.isNotEmpty()) result.add(options.getOrElse(selectedOpt) { options.first() })
                 if (extraOptions.isNotEmpty()) result.add(extraOptions.getOrElse(selectedExtra) { extraOptions.first() })
                 if (tertiaryOptions.isNotEmpty()) result.add(tertiaryOptions.getOrElse(selectedTertiary) { tertiaryOptions.first() })
+                if (categoryOptionsFor != null) result.add(effectiveCategoryId.orEmpty())
                 onSave(result)
             }, Modifier.weight(1f), primary = true,
-                enabled = requiredFields.all { values[it].isNotBlank() })
+                enabled = requiredFields.all { values[it].isNotBlank() } &&
+                    (categoryOptionsFor == null || effectiveCategoryId != null))
         }
     }
 

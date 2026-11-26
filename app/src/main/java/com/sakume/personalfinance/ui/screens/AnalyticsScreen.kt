@@ -62,6 +62,9 @@ import com.sakume.personalfinance.ui.components.EmptyHint
 import com.sakume.personalfinance.ui.components.SegmentedChips
 import com.sakume.personalfinance.ui.daysUntilDue
 import com.sakume.personalfinance.ui.displayCategory
+import com.sakume.personalfinance.ui.LocalCategories
+import com.sakume.personalfinance.ui.categoryColor
+import com.sakume.personalfinance.data.CategoryEntity
 import com.sakume.personalfinance.ui.formatDate
 import com.sakume.personalfinance.ui.monthLabel
 import com.sakume.personalfinance.ui.rupiah
@@ -132,40 +135,6 @@ private fun daysInRange(start: Long, end: Long): Int {
     return ((effectiveEnd - start) / 86_400_000L).toInt().coerceAtLeast(1)
 }
 
-fun normalizeCategory(raw: String): String {
-    val original = raw.trim().ifBlank { return "Lainnya" }
-    val lower = original.lowercase()
-        .replace('•', ' ')
-        .replace('-', ' ')
-        .replace('_', ' ')
-        .replace(Regex("\\s+"), " ")
-        .trim()
-
-    val rules = listOf(
-        listOf("rokok", "cigarette", "vape") to "Rokok",
-        listOf("bensin", "pertamax", "pertalite", "solar", "bbm", "spbu") to "BBM",
-        listOf("investasi", "saham", "reksadana", "crypto", "bitcoin") to "Investasi",
-        listOf("tagihan", "kredivo", "spinjam", "shopee paylater", "spaylater", "cicilan") to "Tagihan",
-        listOf("admin", "biaya admin", "transfer fee") to "Admin bank",
-        listOf("makan", "kopi", "tea", "teh", "nasi", "resto", "warung", "go food", "gofood", "grabfood") to "Makan & minum",
-        listOf("transport", "ojek", "grab", "gojek", "parkir", "tol") to "Transport",
-        listOf("belanja", "supermarket", "minimarket", "alfamart", "indomaret") to "Belanja",
-        listOf("gaji", "salary", "upah") to "Gaji",
-        listOf("hiburan", "game", "netflix", "spotify", "youtube") to "Hiburan",
-        listOf("kesehatan", "obat", "dokter", "apotek") to "Kesehatan",
-        listOf("pulsa", "kuota", "internet", "paket data") to "Pulsa & data",
-        listOf("sewa", "kontrakan", "kos", "kost") to "Sewa / kos",
-        listOf("listrik", "air", "pdam", "pln") to "Utilitas",
-        listOf("tarik tunai", "setor tunai") to "Tunai"
-    )
-    for ((keys, label) in rules) {
-        if (keys.any { lower.contains(it) }) return label
-    }
-
-    val first = lower.split(" ").firstOrNull { it.length >= 3 } ?: lower
-    return first.replaceFirstChar { it.uppercase() }
-}
-
 private data class SpendBucket(val startMillis: Long, val amount: Long, val endMillis: Long)
 
 private data class SpendSeries(val buckets: List<SpendBucket>, val unit: String)
@@ -206,8 +175,11 @@ private fun bucketLabel(ms: Long, unit: String): String {
     return if (unit == "bulanan") month else "${c.get(Calendar.DAY_OF_MONTH)} $month"
 }
 
-private fun toSlices(entries: List<Map.Entry<String, Long>>, palette: List<Color>, maxShown: Int = 5): List<Slice> {
-    val shown = entries.take(maxShown).mapIndexed { i, e -> Slice(e.key, e.value, palette[i % palette.size], setOf(e.key)) }
+private fun toSlices(entries: List<Map.Entry<String, Long>>, byId: Map<String, CategoryEntity>, maxShown: Int = 5): List<Slice> {
+    val shown = entries.take(maxShown).map { e ->
+        val c = byId[e.key]
+        Slice(c?.name ?: "Lainnya", e.value, categoryColor(c), setOf(e.key))
+    }
     val rest = entries.drop(maxShown)
     return if (rest.isEmpty()) shown
     else shown + Slice("Lainnya (${rest.size})", rest.sumOf { it.value }, SliceRest, rest.map { it.key }.toSet())
@@ -243,6 +215,7 @@ fun AnalyticsScreen(
     onPeriodIndexChange: (Int) -> Unit = {},
     listState: LazyListState = rememberLazyListState()
 ) {
+    val categoriesById = LocalCategories.current
     val periods = remember { periodRanges() }
     
     var localPeriodIndex by remember { mutableStateOf(0) }
@@ -275,13 +248,13 @@ fun AnalyticsScreen(
     val savingsRate = if (totalIn > 0) ((net.toDouble() / totalIn.toDouble()) * 100.0) else null
 
     val outByCategory = remember(expenses) {
-        expenses.groupBy { normalizeCategory(it.category.ifBlank { it.note }) }
+        expenses.groupBy { it.categoryId }
             .mapValues { (_, list) -> list.sumOf { it.amount } }
             .entries
             .sortedByDescending { it.value }
     }
     val inByCategory = remember(incomes) {
-        incomes.groupBy { normalizeCategory(it.category.ifBlank { it.note }) }
+        incomes.groupBy { it.categoryId }
             .mapValues { (_, list) -> list.sumOf { it.amount } }
             .entries
             .sortedByDescending { it.value }
@@ -321,7 +294,7 @@ fun AnalyticsScreen(
         buildInsight(
             totalIn = totalIn,
             totalOut = totalOut,
-            topCategory = outByCategory.firstOrNull()?.key,
+            topCategory = outByCategory.firstOrNull()?.key?.let { categoriesById[it]?.name ?: "Lainnya" },
             topCategoryAmount = outByCategory.firstOrNull()?.value ?: 0L,
             dailyAvg = dailyAvg,
             outChangePct = outChangePct,
@@ -329,12 +302,6 @@ fun AnalyticsScreen(
         )
     }
 
-    val categoryColors = listOf(
-        Color(0xFF4B48D6), Color(0xFF34C759), Color(0xFFFF9F0A),
-        Color(0xFFFF3B30), Color(0xFF5AC8FA), Color(0xFFAF52DE),
-        Color(0xFFFF2D55), Color(0xFF8E8E93)
-    )
-    val incomeColors = categoryColors.drop(2) + categoryColors.take(2)
 
     LazyColumn(
         state = listState,
@@ -444,7 +411,7 @@ fun AnalyticsScreen(
                 CompositionCard(
                     title = "Pengeluaran per kategori",
                     total = totalOut,
-                    slices = toSlices(outByCategory, categoryColors),
+                    slices = toSlices(outByCategory, categoriesById),
                     onSliceClick = { sl ->
                         onOpenHistory(
                             HistoryFilter(
@@ -481,7 +448,7 @@ fun AnalyticsScreen(
                 CompositionCard(
                     title = "Pemasukan per kategori",
                     total = totalIn,
-                    slices = toSlices(inByCategory, incomeColors),
+                    slices = toSlices(inByCategory, categoriesById),
                     onSliceClick = { sl ->
                         onOpenHistory(
                             HistoryFilter(
@@ -977,7 +944,7 @@ private fun TopExpensesCard(items: List<TransactionEntity>, onItemClick: (Transa
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(
-                                displayCategory(t.category.ifBlank { t.note.ifBlank { "Pengeluaran" } }),
+                                displayCategory(t.note.ifBlank { LocalCategories.current[t.categoryId]?.name ?: "Pengeluaran" }),
                                 fontWeight = FontWeight.Medium,
                                 color = Ink,
                                 fontSize = 14.sp,

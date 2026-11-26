@@ -107,6 +107,7 @@ import com.sakume.personalfinance.ui.components.ActionChip
 import com.sakume.personalfinance.ui.components.TransactionRow
 import com.sakume.personalfinance.ui.dayHeaderLabel
 import com.sakume.personalfinance.ui.displayCategory
+import com.sakume.personalfinance.ui.LocalCategories
 import com.sakume.personalfinance.ui.formatDate
 import com.sakume.personalfinance.ui.formatTime
 import com.sakume.personalfinance.ui.rupiah
@@ -140,7 +141,7 @@ private fun HistoryFilter.matches(t: TransactionEntity): Boolean {
         if (!isIncome && !isExpense) return false
         if (type != null && !t.type.equals(type, true)) return false
     }
-    if (categories != null && normalizeCategory(t.category.ifBlank { t.note }) !in categories) return false
+    if (categories != null && t.categoryId !in categories) return false
     if (startMillis != null && t.dateMillis < startMillis) return false
     if (endMillis != null && t.dateMillis >= endMillis) return false
     return true
@@ -223,7 +224,8 @@ fun TransactionHistoryScreen(
     onEditTransaction: (TransactionEntity) -> Unit = {},
     onDeleteTransaction: (TransactionEntity) -> Unit = {},
     accountFilter: String? = null,
-    initialFilter: HistoryFilter? = null
+    initialFilter: HistoryFilter? = null,
+    lockedTxIds: Set<String> = emptySet()
 ) {
     var activeFilter by remember(initialFilter) { mutableStateOf(initialFilter) }
     var period by rememberSaveable { mutableStateOf(HistoryPeriod.ALL) }
@@ -250,14 +252,15 @@ fun TransactionHistoryScreen(
         buildDisplayTransactions(source, accounts)
     }
 
-    val entries = remember(visibleTransactions, accounts) {
+    val categoriesById = LocalCategories.current
+    val entries = remember(visibleTransactions, accounts, categoriesById) {
         visibleTransactions.map { t ->
             val label = transactionAccountLabel(t, accounts)
             HistoryEntry(
                 t = t,
                 accountLabel = label,
                 internal = t.transferGroupId != null || t.type.startsWith("transfer", true),
-                search = "${t.note} ${t.category} ${displayCategory(t.note.ifBlank { t.category })} $label".lowercase()
+                search = "${t.note} ${categoriesById[t.categoryId]?.name.orEmpty()} $label".lowercase()
             )
         }
     }
@@ -592,16 +595,13 @@ fun TransactionHistoryScreen(
         selectedDetail?.let { detail ->
             val linked = detail.transferGroupId != null ||
                 detail.debtId != null || detail.investmentAssetId != null || detail.feeAssetId != null ||
-                detail.category.startsWith("Tagihan ", true) ||
-                detail.category.equals("Investasi", true) ||
-                detail.note.startsWith("Setor ke ", true) ||
-                detail.note.startsWith("Pelunasan ", true)
+                detail.id in lockedTxIds
             ModalBottomSheet(
                 onDismissRequest = { selectedDetail = null },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             ) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp)) {
-                    Text(detail.note.ifBlank { detail.category }, color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(detail.note.ifBlank { categoriesById[detail.categoryId]?.name ?: detail.category }, color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Text(if (detail.type == "income") "Pemasukan" else if (detail.type == "expense") "Pengeluaran" else "Transfer", color = Muted, fontSize = 13.sp)
                     Spacer(Modifier.height(10.dp))
                     Text(rupiah(detail.amount), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)

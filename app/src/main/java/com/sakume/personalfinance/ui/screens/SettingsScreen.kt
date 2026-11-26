@@ -77,6 +77,7 @@ fun SettingsScreen(
     accounts: List<AccountEntity> = emptyList(),
     onBack: () -> Unit,
     onOpenBackup: () -> Unit,
+    onOpenCategories: () -> Unit = {},
     onAddSalary: () -> Unit,
     onEditSalary: (SalaryScheduleEntity) -> Unit = {},
     onToggleSalary: (SalaryScheduleEntity, Boolean) -> Unit = { _, _ -> },
@@ -476,6 +477,25 @@ fun SettingsScreen(
             }
 
             item {
+                SettingsSection(icon = Icons.Filled.Tune, title = "Kategori transaksi") {
+                    Text(
+                        "Tambah, ubah, atau hapus kategori pengeluaran dan pemasukan. Kategori sistem tidak bisa dihapus.",
+                        color = Muted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    )
+                    Button(
+                        onClick = onOpenCategories,
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Ink)
+                    ) {
+                        Text("Kelola kategori")
+                    }
+                }
+            }
+
+            item {
                 SettingsSection(icon = Icons.Filled.Backup, title = "Backup & restore") {
                     Text(
                         "Backup otomatis, daftar backup per tanggal, dan restore. " +
@@ -501,7 +521,7 @@ fun SettingsScreen(
                 SettingsSection(icon = Icons.Filled.Tune, title = "Tentang data") {
                     Text(
                         "Skala uang: 1 unit = Rp1 (rupiah utuh, bukan sen).\n" +
-                            "Versi app: 1.4.0 · Room schema v15 · SQLCipher aktif",
+                            "Versi app: 1.4.0 · Room schema v16 · SQLCipher aktif",
                         color = Muted,
                         fontSize = 12.sp,
                         lineHeight = 18.sp

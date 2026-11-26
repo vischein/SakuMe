@@ -235,6 +235,36 @@ interface FinanceDao {
     @Query("DELETE FROM salary_schedules")
     suspend fun clearSalaries()
 
+    @Query("SELECT * FROM categories ORDER BY sortOrder ASC, name ASC")
+    fun categories(): Flow<List<CategoryEntity>>
+
+    @Query("SELECT * FROM categories ORDER BY sortOrder ASC, name ASC")
+    suspend fun allCategories(): List<CategoryEntity>
+
+    @Query("SELECT * FROM categories WHERE id = :id LIMIT 1")
+    suspend fun category(id: String): CategoryEntity?
+
+    @Query("SELECT COALESCE(MAX(sortOrder), -1) FROM categories WHERE id != 'sys_lainnya'")
+    suspend fun maxCategorySortOrder(): Int
+
+    @Query("SELECT COUNT(*) FROM transactions WHERE categoryId = :categoryId")
+    suspend fun countTransactionsForCategory(categoryId: String): Int
+
+    @Query("UPDATE transactions SET categoryId = :toId WHERE categoryId = :fromId")
+    suspend fun reassignCategory(fromId: String, toId: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putCategory(item: CategoryEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putCategories(items: List<CategoryEntity>)
+
+    @Query("DELETE FROM categories WHERE id = :id")
+    suspend fun deleteCategory(id: String)
+
+    @Query("DELETE FROM categories")
+    suspend fun clearCategories()
+
     @Query("DELETE FROM accounts")
     suspend fun clearAccounts()
 
@@ -267,9 +297,10 @@ interface FinanceDao {
         InvestmentHoldingEntity::class,
         DebtEntity::class,
         ScheduledInvestmentEntity::class,
-        SalaryScheduleEntity::class
+        SalaryScheduleEntity::class,
+        CategoryEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -435,11 +466,82 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        internal fun seedCategories(db: SupportSQLiteDatabase) {
+            DefaultCategories.all.forEach { c ->
+                db.execSQL(
+                    "INSERT OR IGNORE INTO categories (id, name, kind, icon, color, sortOrder, isSystem) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    arrayOf<Any?>(c.id, c.name, c.kind, c.icon, c.color, c.sortOrder, if (c.isSystem) 1 else 0)
+                )
+            }
+        }
+
+        internal fun backfillTransactionCategories(db: SupportSQLiteDatabase) {
+            val goalIds = HashSet<String>()
+            db.query("SELECT id FROM investments WHERE kind = 'goal'").use { c ->
+                while (c.moveToNext()) goalIds += c.getString(0)
+            }
+            class Row(val id: String, val m: LegacyMapping)
+            val rows = ArrayList<Row>()
+            db.query(
+                "SELECT id, type, category, note, debtId, transferGroupId, investmentAssetId, feeAssetId FROM transactions"
+            ).use { c ->
+                while (c.moveToNext()) {
+                    rows += Row(
+                        c.getString(0),
+                        LegacyCategoryMapper.map(
+                            type = c.getString(1),
+                            category = c.getString(2) ?: "",
+                            note = c.getString(3) ?: "",
+                            debtId = if (c.isNull(4)) null else c.getString(4),
+                            transferGroupId = if (c.isNull(5)) null else c.getString(5),
+                            investmentAssetId = if (c.isNull(6)) null else c.getString(6),
+                            feeAssetId = if (c.isNull(7)) null else c.getString(7),
+                            goalAssetIds = goalIds
+                        )
+                    )
+                }
+            }
+            rows.forEach { r ->
+                db.execSQL(
+                    "UPDATE transactions SET categoryId = ?, note = ? WHERE id = ?",
+                    arrayOf<Any?>(r.m.categoryId, r.m.note, r.id)
+                )
+            }
+        }
+
+        internal val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS categories (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        kind TEXT NOT NULL,
+                        icon TEXT NOT NULL,
+                        color INTEGER NOT NULL,
+                        sortOrder INTEGER NOT NULL,
+                        isSystem INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                seedCategories(db)
+                db.execSQL("ALTER TABLE transactions ADD COLUMN categoryId TEXT NOT NULL DEFAULT ''")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_transactions_categoryId ON transactions(categoryId)")
+                backfillTransactionCategories(db)
+            }
+        }
+
+        internal val SEED_ON_CREATE = object : RoomDatabase.Callback() {
+            override fun onCreate(db: SupportSQLiteDatabase) {
+                seedCategories(db)
+            }
+        }
+
         private val ALL_MIGRATIONS = arrayOf(
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4,
             MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
             MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
-            MIGRATION_13_14, MIGRATION_14_15
+            MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16
         )
 
         /**
@@ -486,6 +588,7 @@ abstract class AppDatabase : RoomDatabase() {
             return Room.databaseBuilder(context, AppDatabase::class.java, DB_FILE_NAME)
                 .openHelperFactory(factory)
                 .addMigrations(*ALL_MIGRATIONS)
+                .addCallback(SEED_ON_CREATE)
                 .build()
         }
 
@@ -533,6 +636,7 @@ abstract class AppDatabase : RoomDatabase() {
 
                 plain = Room.databaseBuilder(context, AppDatabase::class.java, plainName)
                     .addMigrations(*ALL_MIGRATIONS)
+                    .addCallback(SEED_ON_CREATE)
                     .build()
                 val repo = FinanceRepository(plain)
                 val json = runBlocking {
@@ -567,6 +671,7 @@ abstract class AppDatabase : RoomDatabase() {
                     val encrypted = Room.databaseBuilder(context, AppDatabase::class.java, DB_FILE_NAME)
                         .openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf()))
                         .addMigrations(*ALL_MIGRATIONS)
+                        .addCallback(SEED_ON_CREATE)
                         .build()
                     runBlocking {
                         FinanceRepository(encrypted).importJson(json)

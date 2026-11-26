@@ -59,6 +59,7 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
     val debts = listFrom { it.debts }
     val schedules = listFrom { it.schedules }
     val salaries = listFrom { it.salaries }
+    val categories = listFrom { it.categories }
 
     private var openJob: Job? = null
 
@@ -76,12 +77,6 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
                 val opened = FinanceRepository(db)
                 repoFlow.value = opened
                 _dbState.value = DbState.Ready
-                try {
-                    opened.cleanupCategoryLabels()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -144,22 +139,31 @@ class FinanceViewModel(app: Application) : AndroidViewModel(app) {
     fun addTransaction(
         type: String,
         amount: Long,
-        category: String,
+        categoryId: String,
         accountId: String,
         date: Long,
         note: String,
         error: (String) -> Unit
-    ) = run({ addTransaction(type, amount, category, accountId, date, note) }, error)
+    ) = run({ addTransaction(type, amount, categoryId, accountId, date, note) }, error)
 
     fun updateTransaction(
         id: String,
         amount: Long,
-        category: String,
+        categoryId: String,
         note: String,
         date: Long,
         accountId: String,
         error: (String) -> Unit
-    ) = run({ updateTransaction(id, amount, category, note, date, accountId) }, error)
+    ) = run({ updateTransaction(id, amount, categoryId, note, date, accountId) }, error)
+
+    fun addCategory(name: String, kind: String, icon: String, color: Long, error: (String) -> Unit) =
+        run({ addCategory(name, kind, icon, color) }, error)
+
+    fun updateCategory(id: String, name: String, icon: String, color: Long, error: (String) -> Unit) =
+        run({ updateCategory(id, name, icon, color) }, error)
+
+    fun deleteCategory(id: String, error: (String) -> Unit) =
+        run({ deleteCategory(id) }, error)
 
     fun transfer(from: String, to: String, amount: Long, note: String = "", error: (String) -> Unit) =
         run({ transfer(from, to, amount, note) }, error)

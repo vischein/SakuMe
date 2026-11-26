@@ -20,7 +20,7 @@ data class AccountEntity(
 @Serializable
 @Entity(
     tableName = "transactions",
-    indices = [Index("accountId"), Index("transferGroupId"), Index("investmentAssetId"), Index("feeAssetId")]
+    indices = [Index("accountId"), Index("transferGroupId"), Index("investmentAssetId"), Index("feeAssetId"), Index("categoryId")]
 )
 data class TransactionEntity(
     @PrimaryKey val id: String,
@@ -35,8 +35,34 @@ data class TransactionEntity(
 
     val debtId: String? = null,
 
-    val feeAssetId: String? = null
+    val feeAssetId: String? = null,
+
+    val categoryId: String = ""
 )
+
+@Serializable
+@Entity(tableName = "categories")
+data class CategoryEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val kind: String,
+    val icon: String = "category",
+    val color: Long = 0xFF6B7280,
+    val sortOrder: Int = 0,
+    val isSystem: Boolean = false
+) {
+    fun accepts(txType: String): Boolean = when (txType) {
+        "income" -> kind == CATEGORY_KIND_INCOME || kind == CATEGORY_KIND_BOTH
+        "expense" -> kind == CATEGORY_KIND_EXPENSE || kind == CATEGORY_KIND_BOTH
+        "transfer_in", "transfer_out" -> kind == CATEGORY_KIND_TRANSFER
+        else -> false
+    }
+}
+
+const val CATEGORY_KIND_EXPENSE = "expense"
+const val CATEGORY_KIND_INCOME = "income"
+const val CATEGORY_KIND_BOTH = "both"
+const val CATEGORY_KIND_TRANSFER = "transfer"
 
 @Serializable
 @Entity(tableName = "bills")

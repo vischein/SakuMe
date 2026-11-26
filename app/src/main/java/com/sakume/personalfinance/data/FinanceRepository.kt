@@ -18,6 +18,7 @@ class FinanceRepository(private val db: AppDatabase) {
     val debts: Flow<List<DebtEntity>> = dao.debts()
     val schedules: Flow<List<ScheduledInvestmentEntity>> = dao.schedules()
     val salaries: Flow<List<SalaryScheduleEntity>> = dao.salaries()
+    val categories: Flow<List<CategoryEntity>> = dao.categories()
     private fun id() = UUID.randomUUID().toString()
 
     private fun rupiahText(v: Long): String =
@@ -94,59 +95,45 @@ class FinanceRepository(private val db: AppDatabase) {
             val computed = balances[acc.id] ?: acc.openingBalance
             if (acc.balance != computed) dao.putAccount(acc.copy(balance = computed))
         }
-        cleanupCategoryLabelsInternal()
     }
 
-    suspend fun cleanupCategoryLabels() = db.withTransaction {
-        cleanupCategoryLabelsInternal()
+    private suspend fun requireCategoryFor(categoryId: String, type: String) {
+        val category = dao.category(categoryId) ?: error("Kategori tidak ditemukan")
+        require(category.accepts(type)) { "Kategori ${category.name} tidak sesuai untuk jenis transaksi ini" }
     }
-
-    private suspend fun cleanupCategoryLabelsInternal() {
-        dao.allTransactions().forEach { tx ->
-            val cleaned = sanitizeCategoryStored(tx.category)
-            if (cleaned != tx.category) {
-                dao.putTransaction(tx.copy(category = cleaned))
-            }
-        }
-    }
-
-    private fun sanitizeCategoryStored(raw: String): String =
-        raw
-            .replace(" • ", " ")
-            .replace('•', ' ')
-            .replace(Regex("\\s+"), " ")
-            .trim()
 
     suspend fun addTransaction(
         type: String,
         amount: Long,
-        category: String,
+        categoryId: String,
         accountId: String,
         date: Long,
         note: String
     ) = db.withTransaction {
         require(amount > 0) { "Nominal harus lebih dari nol" }
         require(type == "income" || type == "expense") { "Tipe transaksi tidak valid" }
-        require(category.isNotBlank()) { "Kategori transaksi wajib diisi" }
+        requireCategoryFor(categoryId, type)
         require(date > 0L) { "Tanggal transaksi tidak valid" }
         val account = dao.account(accountId) ?: error("Rekening tidak ditemukan")
         if (type == "expense") require(account.balance >= amount) { "Saldo rekening tidak cukup" }
         dao.putAccount(account.copy(balance = account.balance + if (type == "income") amount else -amount))
-        dao.putTransaction(TransactionEntity(id(), type, amount, category, accountId, date, note))
+        dao.putTransaction(
+            TransactionEntity(id(), type, amount, "", accountId, date, note.trim(), categoryId = categoryId)
+        )
     }
 
     suspend fun updateTransaction(
         txId: String,
         amount: Long,
-        category: String,
+        categoryId: String,
         note: String,
         date: Long,
         accountId: String
     ) = db.withTransaction {
         require(amount > 0L) { "Nominal harus lebih dari nol" }
-        require(category.isNotBlank()) { "Kategori transaksi wajib diisi" }
         require(date > 0L) { "Tanggal transaksi tidak valid" }
         val old = dao.transaction(txId) ?: error("Transaksi tidak ditemukan")
+        requireCategoryFor(categoryId, old.type)
         require(old.type == "income" || old.type == "expense") {
             "Transaksi terkait tidak dapat diedit dari riwayat. Ubah melalui layar asalnya."
         }
@@ -187,7 +174,7 @@ class FinanceRepository(private val db: AppDatabase) {
         }
         dao.putTransaction(old.copy(
             amount = amount,
-            category = category.trim(),
+            categoryId = categoryId,
             note = note.trim(),
             dateMillis = date,
             accountId = accountId
@@ -314,10 +301,10 @@ class FinanceRepository(private val db: AppDatabase) {
         val group = id()
         val now = System.currentTimeMillis()
         dao.putTransaction(
-            TransactionEntity(id(), "transfer_out", amount, "Transfer", fromId, now, note, transferGroupId = group)
+            TransactionEntity(id(), "transfer_out", amount, "", fromId, now, note, transferGroupId = group, categoryId = CategoryIds.TRANSFER)
         )
         dao.putTransaction(
-            TransactionEntity(id(), "transfer_in", amount, "Transfer", toId, now, note, transferGroupId = group)
+            TransactionEntity(id(), "transfer_in", amount, "", toId, now, note, transferGroupId = group, categoryId = CategoryIds.TRANSFER)
         )
     }
 
@@ -367,7 +354,7 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.putTransaction(
             TransactionEntity(
                 txId, "expense", bill.amount,
-                "Tagihan ${bill.provider}", accountId, now, bill.itemName
+                "", accountId, now, bill.itemName, categoryId = CategoryIds.TAGIHAN
             )
         )
     }
@@ -394,7 +381,7 @@ class FinanceRepository(private val db: AppDatabase) {
             dao.putTransaction(
                 TransactionEntity(
                     txId, "expense", it.amount,
-                    "Tagihan ${it.provider}", accountId, now, it.itemName
+                    "", accountId, now, it.itemName, categoryId = CategoryIds.TAGIHAN
                 )
             )
         }
@@ -504,15 +491,15 @@ class FinanceRepository(private val db: AppDatabase) {
         if (adminFee > 0) {
             dao.putTransaction(
                 TransactionEntity(
-                    id(), "expense", adminFee, "Admin bank", accountId, now,
-                    "Biaya admin setor ke ${asset.name}", feeAssetId = assetId
+                    id(), "expense", adminFee, "", accountId, now,
+                    "Biaya admin setor ke ${asset.name}", feeAssetId = assetId, categoryId = CategoryIds.ADMIN_BANK
                 )
             )
         }
         dao.putTransaction(
             TransactionEntity(
-                txId, "expense", amount, "Investasi", accountId, now,
-                "Setor ke ${asset.name}", assetId
+                txId, "expense", amount, "", accountId, now,
+                "Setor ke ${asset.name}", assetId, categoryId = investmentCategoryId(asset)
             )
         )
         dao.putContribution(
@@ -550,16 +537,16 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.putInvestment(asset.copy(value = asset.value - amount))
         dao.putTransaction(
             TransactionEntity(
-                id(), "income", amount, "Investasi", accountId, now,
-                "Tarik dari ${asset.name}", assetId
+                id(), "income", amount, "", accountId, now,
+                "Tarik dari ${asset.name}", assetId, categoryId = investmentCategoryId(asset)
             )
         )
         if (adminFee > 0) {
             dao.putAccount(account.copy(balance = account.balance + amount - adminFee))
             dao.putTransaction(
                 TransactionEntity(
-                    id(), "expense", adminFee, "Admin bank", accountId, now,
-                    "Biaya admin tarik dari ${asset.name}", feeAssetId = assetId
+                    id(), "expense", adminFee, "", accountId, now,
+                    "Biaya admin tarik dari ${asset.name}", feeAssetId = assetId, categoryId = CategoryIds.ADMIN_BANK
                 )
             )
         }
@@ -698,8 +685,9 @@ class FinanceRepository(private val db: AppDatabase) {
                         dao.putAccount(account.copy(balance = account.balance - current.amount))
                         dao.putInvestment(currentAsset.copy(value = currentAsset.value + current.amount))
                         dao.putTransaction(
-                            TransactionEntity(txId, "expense", current.amount, "Investasi", current.accountId,
-                                occurrenceAt, "Setor terjadwal ke ${currentAsset.name}", current.assetId)
+                            TransactionEntity(txId, "expense", current.amount, "", current.accountId,
+                                occurrenceAt, "Setor terjadwal ke ${currentAsset.name}", current.assetId,
+                                categoryId = investmentCategoryId(currentAsset))
                         )
                         dao.putContribution(
                             InvestmentContributionEntity(id(), current.assetId, current.accountId,
@@ -754,8 +742,8 @@ class FinanceRepository(private val db: AppDatabase) {
                             ?: error("Rekening tidak ditemukan")
                         dao.putAccount(account.copy(balance = account.balance + current.amount))
                         dao.putTransaction(
-                            TransactionEntity(id(), "income", current.amount, "Gaji", current.accountId,
-                                occurrenceAt, current.note.ifBlank { "Gaji" })
+                            TransactionEntity(id(), "income", current.amount, "", current.accountId,
+                                occurrenceAt, current.note.ifBlank { "Gaji" }, categoryId = CategoryIds.GAJI)
                         )
                         dao.putSalary(current.copy(lastRunMillis = occurrenceAt))
                         inserted = true
@@ -944,13 +932,6 @@ class FinanceRepository(private val db: AppDatabase) {
         }
         val settled = debt.paidAmount >= amount
         val now = System.currentTimeMillis()
-        if (name != debt.person) {
-            val label = if (debt.type == "utang") "Utang" else "Piutang"
-            val linked = dao.allTransactions()
-                .filter { it.debtId == debt.id }
-                .map { it.copy(category = "$label · $name") }
-            if (linked.isNotEmpty()) dao.putTransactions(linked)
-        }
         dao.putDebt(
             debt.copy(
                 person = name,
@@ -989,8 +970,7 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.putTransaction(
             TransactionEntity(
                 txId, if (isUtang) "expense" else "income", amount,
-                (if (isUtang) "Utang" else "Piutang") + " · ${debt.person}",
-                accountId, now, note, debtId = debt.id
+                "", accountId, now, note, debtId = debt.id, categoryId = CategoryIds.UTANG
             )
         )
         dao.putDebt(
@@ -1038,6 +1018,40 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.deleteDebt(debtId)
     }
 
+    private fun investmentCategoryId(asset: InvestmentEntity) =
+        if (asset.isGoal) CategoryIds.TABUNGAN else CategoryIds.INVESTASI
+
+    suspend fun addCategory(name: String, kind: String, icon: String, color: Long): CategoryEntity = db.withTransaction {
+        val clean = name.trim()
+        require(clean.isNotBlank()) { "Nama kategori wajib diisi" }
+        require(kind == CATEGORY_KIND_EXPENSE || kind == CATEGORY_KIND_INCOME) { "Jenis kategori tidak valid" }
+        require(dao.allCategories().none { it.name.equals(clean, ignoreCase = true) }) { "Nama kategori sudah digunakan" }
+        val created = CategoryEntity(id(), clean, kind, icon, color, dao.maxCategorySortOrder() + 1, isSystem = false)
+        dao.putCategory(created)
+        created
+    }
+
+    suspend fun updateCategory(categoryId: String, name: String, icon: String, color: Long) = db.withTransaction {
+        val current = dao.category(categoryId) ?: error("Kategori tidak ditemukan")
+        val clean = if (current.isSystem) current.name else name.trim()
+        require(clean.isNotBlank()) { "Nama kategori wajib diisi" }
+        require(dao.allCategories().none { it.id != categoryId && it.name.equals(clean, ignoreCase = true) }) {
+            "Nama kategori sudah digunakan"
+        }
+        dao.putCategory(current.copy(name = clean, icon = icon, color = color))
+    }
+
+    suspend fun deleteCategory(categoryId: String): Int = db.withTransaction {
+        val current = dao.category(categoryId) ?: error("Kategori tidak ditemukan")
+        require(!current.isSystem) { "Kategori sistem tidak bisa dihapus" }
+        val moved = dao.countTransactionsForCategory(categoryId)
+        dao.reassignCategory(categoryId, CategoryIds.LAINNYA)
+        dao.deleteCategory(categoryId)
+        moved
+    }
+
+    suspend fun categoryUsage(categoryId: String): Int = dao.countTransactionsForCategory(categoryId)
+
     suspend fun snapshot(): BackupData = db.withTransaction {
         BackupData(
             accounts = dao.allAccounts(),
@@ -1048,7 +1062,8 @@ class FinanceRepository(private val db: AppDatabase) {
             debts = dao.allDebts(),
             schedules = dao.allSchedules(),
             salaries = dao.allSalaries(),
-            holdings = dao.allHoldings()
+            holdings = dao.allHoldings(),
+            categories = dao.allCategories()
         )
     }
 
@@ -1076,10 +1091,11 @@ class FinanceRepository(private val db: AppDatabase) {
     suspend fun importDecoded(decoded: BackupData): BackupData = importJsonDecoded(decoded)
 
     private suspend fun importJsonDecoded(decoded: BackupData): BackupData = db.withTransaction {
-        val data = normalizeBills(normalizeDebts(decoded))
+        val data = normalizeBills(normalizeDebts(CategoryBackfill.apply(decoded)))
         validateBackup(data)
         dao.clearAccounts()
         dao.clearTransactions()
+        dao.clearCategories()
         dao.clearBills()
         dao.clearInvestments()
         dao.clearContributions()
@@ -1088,6 +1104,7 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.clearSchedules()
         dao.clearSalaries()
         dao.putAccounts(data.accounts)
+        dao.putCategories(data.categories)
         dao.putTransactions(data.transactions)
         dao.putBills(data.bills)
         dao.putInvestments(data.investments)
@@ -1152,6 +1169,14 @@ class FinanceRepository(private val db: AppDatabase) {
         val accountIds = data.accounts.map { it.id }.toSet()
         val assetIds = data.investments.map { it.id }.toSet()
         val transactionIds = data.transactions.map { it.id }.toSet()
+        val categoryIds = data.categories.map { it.id }.toSet()
+        require(categoryIds.size == data.categories.size) { "Backup memiliki ID kategori duplikat" }
+        require(data.categories.all {
+            it.id.isNotBlank() && it.name.isNotBlank() &&
+                it.kind in setOf(CATEGORY_KIND_EXPENSE, CATEGORY_KIND_INCOME, CATEGORY_KIND_BOTH, CATEGORY_KIND_TRANSFER)
+        }) { "Backup memiliki kategori tidak valid" }
+        require(DefaultCategories.systemIds.all { it in categoryIds }) { "Backup tidak memuat kategori sistem" }
+        require(data.transactions.all { it.categoryId in categoryIds }) { "Backup memiliki transaksi dengan kategori tidak dikenal" }
         require(accountIds.size == data.accounts.size) { "Backup memiliki ID rekening duplikat" }
         require(assetIds.size == data.investments.size) { "Backup memiliki ID investasi duplikat" }
         require(transactionIds.size == data.transactions.size) { "Backup memiliki ID transaksi duplikat" }

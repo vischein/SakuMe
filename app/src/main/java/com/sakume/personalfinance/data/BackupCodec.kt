@@ -23,6 +23,7 @@ import java.util.UUID
     val schedules: List<ScheduledInvestmentEntity> = emptyList(),
     val salaries: List<SalaryScheduleEntity> = emptyList(),
     val holdings: List<InvestmentHoldingEntity> = emptyList(),
+    val categories: List<CategoryEntity> = emptyList(),
     val meta: BackupMeta? = null,
     val settings: BackupSettings? = null
 )
@@ -45,7 +46,7 @@ import java.util.UUID
     val autoBackupKeep: Int? = null
 )
 object BackupCodec {
-    const val FORMAT_VERSION = 2
+    const val FORMAT_VERSION = 3
     private val json = Json { prettyPrint = false; ignoreUnknownKeys = true; encodeDefaults = true }
     fun encode(data: BackupData): String = json.encodeToString(data)
     fun decode(text: String): BackupData = json.decodeFromString(text)

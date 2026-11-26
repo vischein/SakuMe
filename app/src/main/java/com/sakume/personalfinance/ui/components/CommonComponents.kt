@@ -38,7 +38,8 @@ import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Work
 import com.sakume.personalfinance.ui.formatTime
 import com.sakume.personalfinance.ui.isStartOfDay
-import com.sakume.personalfinance.ui.screens.normalizeCategory
+import com.sakume.personalfinance.ui.LocalCategories
+import com.sakume.personalfinance.ui.categoryIconVector
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.SouthWest
 import androidx.compose.material3.Icon
@@ -248,25 +249,6 @@ fun StatTile(
     }
 }
 
-private fun categoryIcon(normalized: String): ImageVector? = when (normalized) {
-    "Makan & minum" -> Icons.Filled.Restaurant
-    "Transport" -> Icons.Filled.DirectionsCar
-    "BBM" -> Icons.Filled.LocalGasStation
-    "Gaji" -> Icons.Filled.Work
-    "Tagihan" -> Icons.Filled.ReceiptLong
-    "Tunai" -> Icons.Filled.Payments
-    "Rokok" -> Icons.Filled.SmokingRooms
-    "Investasi" -> Icons.Filled.TrendingUp
-    "Admin bank" -> Icons.Filled.AccountBalance
-    "Belanja" -> Icons.Filled.ShoppingCart
-    "Hiburan" -> Icons.Filled.Movie
-    "Kesehatan" -> Icons.Filled.MedicalServices
-    "Pulsa & data" -> Icons.Filled.PhoneAndroid
-    "Sewa / kos" -> Icons.Filled.Home
-    "Utilitas" -> Icons.Filled.Bolt
-    else -> null
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TransactionRow(
@@ -302,18 +284,21 @@ fun TransactionRow(
         isIn -> "+"
         else -> "-"
     }
-    val title = displayCategory(
-        t.note.ifBlank { t.category }.ifBlank { if (isIn) "Pemasukan" else "Pengeluaran" }
-    )
     val isTransferDisplay = isTransfer || t.note == "Transfer"
-    val icon = remember(t.type, t.category, t.note, t.transferGroupId) {
+    val category = LocalCategories.current[t.categoryId]
+    val title = displayCategory(
+        t.note.ifBlank { if (isTransferDisplay) t.category else category?.name.orEmpty() }
+            .ifBlank { if (isIn) "Pemasukan" else "Pengeluaran" }
+    )
+    val icon = remember(isTransferDisplay, category?.icon) {
         if (isTransferDisplay) Icons.Filled.SwapHoriz
-        else categoryIcon(normalizeCategory(t.category.ifBlank { t.note }))
+        else category?.let { categoryIconVector(it.icon) }
             ?: if (isIn) Icons.Filled.SouthWest else Icons.Filled.NorthEast
     }
-    val subtitle = remember(accountName, t.dateMillis, showDate) {
+    val categoryLabel = if (!isTransferDisplay && t.note.isNotBlank()) category?.name else null
+    val subtitle = remember(accountName, t.dateMillis, showDate, categoryLabel) {
         val time = if (isStartOfDay(t.dateMillis)) null else formatTime(t.dateMillis)
-        listOfNotNull(accountName, if (showDate) formatDate(t.dateMillis) else null, time).joinToString(" · ")
+        listOfNotNull(categoryLabel, accountName, if (showDate) formatDate(t.dateMillis) else null, time).joinToString(" · ")
     }
 
     val interactive = selectionMode && onToggleSelect != null

@@ -23,7 +23,7 @@ class FinanceRepositoryTest {
         kotlinx.coroutines.runBlocking {
             db = Room.inMemoryDatabaseBuilder(
                 ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java
-            ).allowMainThreadQueries().build()
+            ).allowMainThreadQueries().addCallback(AppDatabase.SEED_ON_CREATE).build()
             repo = FinanceRepository(db)
             repo.addAccount("Cash", "Cash", 100_000L)
             cashId = db.dao().allAccounts().single().id
@@ -33,13 +33,13 @@ class FinanceRepositoryTest {
     @After fun tearDown() { if (::db.isInitialized) db.close() }
 
     @Test fun addExpenseReducesBalanceWhenFundsAreSufficient() = runTest {
-        repo.addTransaction("expense", 25_000, "Makan", cashId, 1_700_000_000_000, "Lunch")
+        repo.addTransaction("expense", 25_000, CategoryIds.MAKAN, cashId, 1_700_000_000_000, "Lunch")
         assertEquals(75_000L, db.dao().account(cashId)!!.balance)
     }
 
     @Test fun addExpenseRejectsInsufficientBalanceWithoutChangingData() = runTest {
         assertThrows(IllegalArgumentException::class.java) {
-            kotlinx.coroutines.runBlocking { repo.addTransaction("expense", 100_001, "Makan", cashId, 1_700_000_000_000, "") }
+            kotlinx.coroutines.runBlocking { repo.addTransaction("expense", 100_001, CategoryIds.MAKAN, cashId, 1_700_000_000_000, "") }
         }
         assertEquals(100_000L, db.dao().account(cashId)!!.balance)
         assertTrue(db.dao().allTransactions().isEmpty())
@@ -109,14 +109,14 @@ class FinanceRepositoryTest {
     }
 
     @Test fun deleteTransactionReversesExpenseAndIncomeWithoutNegativeBalance() = runTest {
-        repo.addTransaction("expense", 10_000, "Makan", cashId, 1_700_000_000_000, "")
+        repo.addTransaction("expense", 10_000, CategoryIds.MAKAN, cashId, 1_700_000_000_000, "")
         val expense = db.dao().allTransactions().single()
         repo.deleteTransaction(expense.id)
         assertEquals(100_000L, db.dao().account(cashId)!!.balance)
         assertTrue(db.dao().allTransactions().isEmpty())
         repo.addTransaction("income", 5_000, "Bonus", cashId, 1_700_000_000_001, "")
         val income = db.dao().allTransactions().single()
-        repo.addTransaction("expense", 105_000, "Belanja", cashId, 1_700_000_000_002, "")
+        repo.addTransaction("expense", 105_000, CategoryIds.BELANJA, cashId, 1_700_000_000_002, "")
         assertThrows(IllegalArgumentException::class.java) { kotlinx.coroutines.runBlocking { repo.deleteTransaction(income.id) } }
         assertEquals(100_000L, db.dao().account(cashId)!!.balance)
         assertEquals(2, db.dao().allTransactions().size)
@@ -147,7 +147,7 @@ class FinanceRepositoryTest {
     }
 
     @Test fun recalculateBalancesUsesOpeningBalanceAndTransactionHistory() = runTest {
-        repo.addTransaction("expense", 10_000, "Makan", cashId, 1_700_000_000_000, "")
+        repo.addTransaction("expense", 10_000, CategoryIds.MAKAN, cashId, 1_700_000_000_000, "")
         val current = db.dao().account(cashId)!!
         db.dao().putAccount(current.copy(balance = 1L))
         repo.recalculateBalances()
@@ -200,7 +200,7 @@ class FinanceRepositoryTest {
     }
 
     @Test fun importInvalidBackupLeavesExistingDatabaseUnchanged() = runTest {
-        repo.addTransaction("expense", 10_000, "Makan", cashId, 1_700_000_000_000, "")
+        repo.addTransaction("expense", 10_000, CategoryIds.MAKAN, cashId, 1_700_000_000_000, "")
         val before = repo.snapshot()
         val invalid = BackupData(
             accounts = listOf(AccountEntity("bad", "")),
@@ -213,7 +213,7 @@ class FinanceRepositoryTest {
 
 
     @Test fun importFailureAfterClearingAndPartialInsertRollsBackEntireDatabase() = runTest {
-        repo.addTransaction("expense", 10_000, "Makan", cashId, 1_700_000_000_000, "Existing")
+        repo.addTransaction("expense", 10_000, CategoryIds.MAKAN, cashId, 1_700_000_000_000, "Existing")
         val before = repo.snapshot()
         db.openHelper.writableDatabase.execSQL(
             "CREATE TRIGGER reject_import_transaction BEFORE INSERT ON transactions BEGIN SELECT RAISE(ABORT, 'forced test failure'); END"
@@ -239,11 +239,11 @@ class FinanceRepositoryTest {
         assertEquals(listOf("restored"), db.dao().allAccounts().map { it.id })
     }
     @Test fun updateTransactionAdjustsBalanceWhenExpenseAmountIncreasesOrDecreases() = runTest {
-        repo.addTransaction("expense", 10_000, "Belanja", cashId, 1_700_000_000_000, "Awal")
+        repo.addTransaction("expense", 10_000, CategoryIds.BELANJA, cashId, 1_700_000_000_000, "Awal")
         val tx = db.dao().allTransactions().single()
-        repo.updateTransaction(tx.id, 25_000, "Belanja", "Naik", tx.dateMillis, cashId)
+        repo.updateTransaction(tx.id, 25_000, CategoryIds.BELANJA, "Naik", tx.dateMillis, cashId)
         assertEquals(75_000L, db.dao().account(cashId)!!.balance)
-        repo.updateTransaction(tx.id, 5_000, "Belanja", "Turun", tx.dateMillis, cashId)
+        repo.updateTransaction(tx.id, 5_000, CategoryIds.BELANJA, "Turun", tx.dateMillis, cashId)
         assertEquals(95_000L, db.dao().account(cashId)!!.balance)
         assertEquals(5_000L, db.dao().transaction(tx.id)!!.amount)
     }
@@ -251,9 +251,9 @@ class FinanceRepositoryTest {
     @Test fun updateTransactionMovesBalanceBetweenAccountsAtomically() = runTest {
         repo.addAccount("Bank", "Bank", 20_000)
         val bank = db.dao().allAccounts().first { it.name == "Bank" }
-        repo.addTransaction("expense", 15_000, "Belanja", cashId, 1_700_000_000_000, "Awal")
+        repo.addTransaction("expense", 15_000, CategoryIds.BELANJA, cashId, 1_700_000_000_000, "Awal")
         val tx = db.dao().allTransactions().single()
-        repo.updateTransaction(tx.id, 12_000, "Belanja", "Pindah", tx.dateMillis, bank.id)
+        repo.updateTransaction(tx.id, 12_000, CategoryIds.BELANJA, "Pindah", tx.dateMillis, bank.id)
         assertEquals(100_000L, db.dao().account(cashId)!!.balance)
         assertEquals(8_000L, db.dao().account(bank.id)!!.balance)
         assertEquals(bank.id, db.dao().transaction(tx.id)!!.accountId)
@@ -272,11 +272,11 @@ class FinanceRepositoryTest {
     }
 
     @Test fun updateTransactionRejectsNegativeFinalBalanceWithoutPartialChanges() = runTest {
-        repo.addTransaction("expense", 20_000, "Belanja", cashId, 1_700_000_000_000, "")
+        repo.addTransaction("expense", 20_000, CategoryIds.BELANJA, cashId, 1_700_000_000_000, "")
         val tx = db.dao().allTransactions().single()
         assertThrows(IllegalArgumentException::class.java) {
             kotlinx.coroutines.runBlocking {
-                repo.updateTransaction(tx.id, 120_000, "Belanja", "Naik", tx.dateMillis, cashId)
+                repo.updateTransaction(tx.id, 120_000, CategoryIds.BELANJA, "Naik", tx.dateMillis, cashId)
             }
         }
         assertEquals(80_000L, db.dao().account(cashId)!!.balance)
@@ -331,7 +331,7 @@ class FinanceRepositoryTest {
         val tx = db.dao().allTransactions().single()
         assertThrows(IllegalArgumentException::class.java) {
             kotlinx.coroutines.runBlocking {
-                repo.updateTransaction(tx.id, 4_000, tx.category, tx.note, tx.dateMillis, cashId)
+                repo.updateTransaction(tx.id, 4_000, tx.categoryId, tx.note, tx.dateMillis, cashId)
             }
         }
         assertEquals(95_000L, db.dao().account(cashId)!!.balance)

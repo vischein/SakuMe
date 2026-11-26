@@ -533,7 +533,8 @@ object BackupManager {
         debts = d.debts.sortedBy { it.id },
         schedules = d.schedules.sortedBy { it.id },
         salaries = d.salaries.sortedBy { it.id },
-        holdings = d.holdings.sortedBy { it.id }
+        holdings = d.holdings.sortedBy { it.id },
+        categories = d.categories.sortedBy { it.id }
     )
 
     private fun dayStamp(ms: Long): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(ms))

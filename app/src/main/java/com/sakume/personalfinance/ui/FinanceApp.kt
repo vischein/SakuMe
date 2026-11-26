@@ -69,6 +69,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sakume.personalfinance.data.CategoryEntity
+import com.sakume.personalfinance.ui.screens.CategoriesScreen
+import com.sakume.personalfinance.data.CategoryIds
 import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Muted
 
@@ -78,6 +81,20 @@ fun FinanceApp(
     requestedTab: String? = null,
     onTabHandled: () -> Unit = {}
 ) {
+    val categories by vm.categories.collectAsState()
+    val categoriesById = remember(categories) { categories.associateBy { it.id } }
+    androidx.compose.runtime.CompositionLocalProvider(LocalCategories provides categoriesById) {
+        FinanceAppContent(vm, categories, requestedTab, onTabHandled)
+    }
+}
+
+@Composable
+private fun FinanceAppContent(
+    vm: FinanceViewModel,
+    categories: List<CategoryEntity>,
+    requestedTab: String?,
+    onTabHandled: () -> Unit
+) {
     val accounts by vm.accounts.collectAsState()
     val transactions by vm.transactions.collectAsState()
     val bills by vm.bills.collectAsState()
@@ -86,6 +103,9 @@ fun FinanceApp(
     val debts by vm.debts.collectAsState()
     val schedules by vm.schedules.collectAsState()
     val salaries by vm.salaries.collectAsState()
+    val lockedTxIds = remember(bills, debts) {
+        (bills.mapNotNull { it.paymentTransactionId } + debts.mapNotNull { it.paymentTransactionId }).toSet()
+    }
     var tab by remember { mutableStateOf("Home") }
     var subScreen by remember { mutableStateOf<String?>(null) }
     var historyAccountId by remember { mutableStateOf<String?>(null) }
@@ -136,6 +156,7 @@ fun FinanceApp(
 
     BackHandler(enabled = subScreen != null || tab != "Home") {
         when {
+            subScreen == "categories" -> subScreen = "settings"
             subScreen != null -> subScreen = null
             tab != "Home" -> tab = "Home"
         }
@@ -272,10 +293,21 @@ fun FinanceApp(
                             accounts = accounts,
                             onBack = { subScreen = null },
                             onOpenBackup = { subScreen = "backup" },
+                            onOpenCategories = { subScreen = "categories" },
                             onAddSalary = { dialog = "salary" },
                             onEditSalary = { s -> dialog = "editsalary:${s.id}" },
                             onToggleSalary = { s, on -> vm.setSalaryEnabled(s.id, on) },
                             onDeleteSalary = { s -> dialog = "deletesalary:${s.id}" }
+                        )
+                    } else if (subScreen == "categories") {
+                        val usage = remember(transactions) { transactions.groupingBy { it.categoryId }.eachCount() }
+                        CategoriesScreen(
+                            categories = categories,
+                            usage = usage,
+                            onBack = { subScreen = "settings" },
+                            onAdd = { n, k, i, c -> vm.addCategory(n, k, i, c) { error = it } },
+                            onUpdate = { id, n, i, c -> vm.updateCategory(id, n, i, c) { error = it } },
+                            onDelete = { id -> vm.deleteCategory(id) { error = it } }
                         )
                     } else if (subScreen == "txHistory") {
                         TransactionHistoryScreen(
@@ -287,6 +319,7 @@ fun FinanceApp(
                             onDeleteMany = { ids ->
                                 dialog = "deletetxmany:${ids.joinToString(",")}"
                             },
+                            lockedTxIds = lockedTxIds,
                             onEditTransaction = { tx -> dialog = "edittransaction:${tx.id}" },
                             onDeleteTransaction = { tx -> dialog = "deletetx:${tx.id}" }
                         )
@@ -600,7 +633,7 @@ fun FinanceApp(
 
             dialog == "transaction" -> FormDialog(
                 title = "Transaksi baru",
-                fields = listOf("Nominal", "Catatan"),
+                fields = listOf("Nominal", "Catatan (opsional)"),
                 options = listOf("expense", "income"),
                 optionLabel = "",
                 optionBeforeField = 0,
@@ -608,8 +641,9 @@ fun FinanceApp(
                 extraOptions = accounts.map { it.name },
                 extraOptionSecondary = { n -> accounts.firstOrNull { it.name == n }?.let { rupiah(it.balance) } },
                 extraOptionLabel = "Rekening",
-                requiredFields = setOf(1),
+                requiredFields = setOf(0),
                 includeTransactionDate = true,
+                categoryOptionsFor = { type -> pickableCategories(categories, type) },
                 onDismiss = { dialog = "" }
             ) { v ->
                 val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
@@ -617,7 +651,8 @@ fun FinanceApp(
                 val type = v.getOrElse(3) { "expense" }
                 val accName = v.getOrElse(4) { accounts.firstOrNull()?.name.orEmpty() }
                 val acc = accounts.firstOrNull { it.name == accName }
-                val note = v.getOrElse(1) { "" }
+                val note = v.getOrElse(1) { "" }.trim()
+                val categoryId = v.getOrElse(5) { CategoryIds.LAINNYA }
                 when {
                     accounts.isEmpty() -> error = "Tambahkan rekening terlebih dahulu"
                     acc == null -> error = "Pilih rekening"
@@ -626,7 +661,7 @@ fun FinanceApp(
                         vm.addTransaction(
                             type,
                             amount,
-                            note.ifBlank { if (type == "income") "Pemasukan" else "Pengeluaran" },
+                            categoryId,
                             acc.id,
                             date,
                             note
@@ -643,10 +678,7 @@ fun FinanceApp(
                 } else {
                     val linked = tx.transferGroupId != null || tx.debtId != null ||
                         tx.investmentAssetId != null || tx.feeAssetId != null ||
-                        tx.category.startsWith("Tagihan ", true) ||
-                        tx.category.equals("Investasi", true) ||
-                        tx.note.startsWith("Setor ke ", true) ||
-                        tx.note.startsWith("Pelunasan ", true)
+                        tx.id in lockedTxIds
                     if (linked || (tx.type != "income" && tx.type != "expense")) {
                         MessageDialog(
                             title = "Transaksi tidak dapat diedit",
@@ -656,7 +688,7 @@ fun FinanceApp(
                     } else {
                         FormDialog(
                             title = "Edit transaksi",
-                            fields = listOf("Nominal", "Catatan"),
+                            fields = listOf("Nominal", "Catatan (opsional)"),
                             options = listOf(tx.type),
                             optionLabel = "",
                             optionBeforeField = 0,
@@ -668,7 +700,9 @@ fun FinanceApp(
                             initialValues = listOf(tx.amount.toString(), tx.note),
                             includeTransactionDate = true,
                             initialTransactionDateMillis = tx.dateMillis,
-                            requiredFields = setOf(0, 1),
+                            requiredFields = setOf(0),
+                            categoryOptionsFor = { type -> pickableCategories(categories, type) },
+                            initialCategoryId = tx.categoryId,
                             onDismiss = { dialog = "" }
                         ) { v ->
                             val amount = v[0].filter { it.isDigit() }.toLongOrNull() ?: 0L
@@ -683,8 +717,7 @@ fun FinanceApp(
                             } else {
                                 val note = v[1].trim()
                                 vm.updateTransaction(
-                                    tx.id, amount,
-                                    note.ifBlank { if (type == "income") "Pemasukan" else "Pengeluaran" },
+                                    tx.id, amount, v.getOrElse(5) { tx.categoryId },
                                     note, date, account.id
                                 ) { error = it }
                                 dialog = ""
