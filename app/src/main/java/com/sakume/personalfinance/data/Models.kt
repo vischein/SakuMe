@@ -14,8 +14,35 @@ data class AccountEntity(
     val balance: Long = 0,
 
     val openingBalance: Long = 0,
-    val sortOrder: Int = 0
-)
+    val sortOrder: Int = 0,
+    val creditLimit: Long? = null
+) {
+    val isCredit: Boolean get() = type.equals(ACCOUNT_TYPE_CREDIT, ignoreCase = true)
+
+    val owed: Long get() = if (isCredit) (-balance).coerceAtLeast(0L) else 0L
+
+    val availableCredit: Long?
+        get() {
+            val limit = creditLimit
+            return if (isCredit && limit != null) (limit - owed).coerceAtLeast(0L) else null
+        }
+
+    fun canHold(newBalance: Long): Boolean {
+        if (!isCredit) return newBalance >= 0L
+        val limit = creditLimit ?: return true
+        return newBalance >= -limit
+    }
+}
+
+const val ACCOUNT_TYPE_CREDIT = "Kredit"
+val ACCOUNT_TYPES = listOf("Cash", "E-Wallet", "Bank", ACCOUNT_TYPE_CREDIT)
+
+fun accountTypeLabel(type: String): String =
+    if (type.equals(ACCOUNT_TYPE_CREDIT, ignoreCase = true)) "Kredit/PayLater" else type
+
+fun List<AccountEntity>.netWorth(): Long = sumOf { it.balance }
+
+fun List<AccountEntity>.creditOwedTotal(): Long = sumOf { it.owed }
 
 @Serializable
 @Entity(

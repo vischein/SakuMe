@@ -56,4 +56,20 @@ class AppDatabaseMigrationTest {
         }
         migrated.close()
     }
+
+    @Test fun migrationSixteenToSeventeenAddsNullableCreditLimitAndKeepsAccounts() {
+        val databaseName = "sakume-migration-v16-to-v17"
+        helper.createDatabase(databaseName, 16).apply {
+            execSQL("INSERT INTO accounts (id, name, type, balance, openingBalance, sortOrder) VALUES ('a1', 'Cash', 'Cash', 70000, 100000, 0)")
+            close()
+        }
+        val migrated = helper.runMigrationsAndValidate(databaseName, 17, true, AppDatabase.MIGRATION_16_17)
+        migrated.query("SELECT balance, openingBalance, creditLimit FROM accounts WHERE id = 'a1'").use { c ->
+            check(c.moveToFirst())
+            assertEquals(70000L, c.getLong(0))
+            assertEquals(100000L, c.getLong(1))
+            check(c.isNull(2))
+        }
+        migrated.close()
+    }
 }

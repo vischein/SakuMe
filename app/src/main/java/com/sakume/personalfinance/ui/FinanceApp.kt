@@ -24,10 +24,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.sakume.personalfinance.data.ACCOUNT_TYPES
 import com.sakume.personalfinance.data.BackupCodec
 import com.sakume.personalfinance.data.BackupManager
 import com.sakume.personalfinance.data.GOAL_CATEGORIES
 import com.sakume.personalfinance.data.HOLDING_TYPES
+import com.sakume.personalfinance.data.accountTypeLabel
 import com.sakume.personalfinance.ui.components.AccountPickerDialog
 import com.sakume.personalfinance.ui.components.BackupPasswordDialog
 import com.sakume.personalfinance.ui.components.InvestmentTransferDialog
@@ -618,15 +620,18 @@ private fun FinanceAppContent(
             )
             dialog == "account" -> FormDialog(
                 title = "Tambah rekening",
-                fields = listOf("Nama rekening", "Saldo awal"),
-                options = listOf("Cash", "E-Wallet", "Bank"),
+                fields = listOf("Nama rekening", "Saldo awal (kredit: jumlah terutang)", "Batas limit kredit (opsional)"),
+                options = ACCOUNT_TYPES,
                 optionLabel = "Tipe rekening",
+                optionDisplay = { accountTypeLabel(it) },
+                moneyFields = setOf(1, 2),
                 onDismiss = { dialog = "" }
             ) { v ->
                 val balance = v[1].filter { it.isDigit() }.toLongOrNull() ?: 0L
+                val limit = v[2].filter { it.isDigit() }.toLongOrNull()
                 if (v[0].isBlank()) error = "Nama rekening wajib diisi"
                 else {
-                    vm.addAccount(v[0], v.getOrElse(2) { "Cash" }, balance) { error = it }
+                    vm.addAccount(v[0], v.getOrElse(3) { "Cash" }, balance, limit) { error = it }
                     dialog = ""
                 }
             }
@@ -999,7 +1004,8 @@ private fun FinanceAppContent(
                     when {
                         asset == null -> error = "Aset tidak ditemukan"
                         amount <= 0 -> error = "Nominal harus lebih dari nol"
-                        acc.balance < amount + adminFee -> error = "Saldo rekening tidak cukup"
+                        !acc.canHold(acc.balance - amount - adminFee) ->
+                            error = if (acc.isCredit) "Limit kredit ${acc.name} tidak cukup" else "Saldo rekening tidak cukup"
                         else -> {
                             vm.contribute(asset.id, acc.id, amount, adminFee) { error = it }
                             dialog = ""

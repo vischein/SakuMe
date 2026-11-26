@@ -46,7 +46,7 @@ import java.util.UUID
     val autoBackupKeep: Int? = null
 )
 object BackupCodec {
-    const val FORMAT_VERSION = 3
+    const val FORMAT_VERSION = 4
     private val json = Json { prettyPrint = false; ignoreUnknownKeys = true; encodeDefaults = true }
     fun encode(data: BackupData): String = json.encodeToString(data)
     fun decode(text: String): BackupData = json.decodeFromString(text)

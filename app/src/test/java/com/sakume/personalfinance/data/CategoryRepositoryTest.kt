@@ -48,8 +48,8 @@ class CategoryRepositoryTest {
          "meta":{"format":2,"createdAtMillis":1700000000000,"appVersion":"1.3.0","source":"manual"}}
     """.trimIndent()
 
-    @Test fun formatVersionIsThreeAndNewBackupsCarryCategories() = runTest {
-        assertEquals(3, BackupCodec.FORMAT_VERSION)
+    @Test fun formatVersionIsFourAndNewBackupsCarryCategories() = runTest {
+        assertEquals(4, BackupCodec.FORMAT_VERSION)
         repo.addTransaction("expense", 1_000, CategoryIds.MAKAN, cashId, 1_700_000_000_000, "")
         val decoded = BackupCodec.decode(repo.exportJson())
         assertEquals(DefaultCategories.all.size, decoded.categories.size)

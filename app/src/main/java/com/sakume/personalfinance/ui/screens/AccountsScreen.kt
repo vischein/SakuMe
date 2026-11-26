@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
@@ -65,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.sakume.personalfinance.data.AccountEntity
 import com.sakume.personalfinance.data.TransactionEntity
+import com.sakume.personalfinance.data.accountTypeLabel
 import com.sakume.personalfinance.ui.components.EmptyHint
 import com.sakume.personalfinance.ui.rupiah
 import com.sakume.personalfinance.ui.theme.Accent
@@ -73,6 +75,7 @@ import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Muted
 import com.sakume.personalfinance.ui.theme.PanelSoft
 import com.sakume.personalfinance.ui.theme.Red
+import com.sakume.personalfinance.ui.theme.Credit
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.Edit
@@ -340,6 +343,7 @@ private fun AccountCard(
 ) {
     val icon =
         when {
+            account.isCredit -> Icons.Filled.CreditCard
             account.type.equals("Cash", true) -> Icons.Filled.Payments
             account.type.equals("E-Wallet", true) -> Icons.Filled.PhoneAndroid
             else -> Icons.Filled.AccountBalance
@@ -398,10 +402,22 @@ private fun AccountCard(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     rupiah(account.balance),
-                    color = Ink,
+                    color = if (account.isCredit) Credit else Ink,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                 )
+                if (account.isCredit) {
+                    Text(
+                        buildString {
+                            append("Terutang ${rupiah(account.owed)}")
+                            account.availableCredit?.let { append(" · sisa limit ${rupiah(it)}") }
+                        },
+                        color = Muted,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             if (mode == "rename") {
                 IconButton(onClick = onRename, modifier = Modifier.size(36.dp)) {
@@ -414,7 +430,7 @@ private fun AccountCard(
             } else if (mode == "normal") {
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        account.type.uppercase(),
+                        accountTypeLabel(account.type).uppercase(),
                         color = Muted,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,

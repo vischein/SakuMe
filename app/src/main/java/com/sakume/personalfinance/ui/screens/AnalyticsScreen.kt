@@ -57,6 +57,7 @@ import com.sakume.personalfinance.data.AccountEntity
 import com.sakume.personalfinance.data.BillEntity
 import com.sakume.personalfinance.data.DebtEntity
 import com.sakume.personalfinance.data.TransactionEntity
+import com.sakume.personalfinance.data.creditOwedTotal
 import com.sakume.personalfinance.ui.components.ActionChip
 import com.sakume.personalfinance.ui.components.EmptyHint
 import com.sakume.personalfinance.ui.components.SegmentedChips
@@ -69,6 +70,7 @@ import com.sakume.personalfinance.ui.formatDate
 import com.sakume.personalfinance.ui.monthLabel
 import com.sakume.personalfinance.ui.rupiah
 import com.sakume.personalfinance.ui.theme.CardBg
+import com.sakume.personalfinance.ui.theme.Credit
 import com.sakume.personalfinance.ui.theme.Green
 import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Muted
@@ -1027,7 +1029,7 @@ private fun AccountsCard(
                     )
                 }
                 Spacer(Modifier.width(8.dp))
-                Text(rupiah(a.balance), color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(rupiah(a.balance), color = if (a.isCredit) Credit else Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 RowChevron()
             }
         }
@@ -1036,6 +1038,14 @@ private fun AccountsCard(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Total saldo", fontWeight = FontWeight.Bold, color = Ink, fontSize = 14.sp)
             Text(rupiah(accounts.sumOf { it.balance }), fontWeight = FontWeight.Bold, color = Ink, fontSize = 14.sp)
+        }
+        val creditOwed = accounts.creditOwedTotal()
+        if (creditOwed > 0L) {
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Termasuk kewajiban kredit", color = Muted, fontSize = 12.sp)
+                Text("-" + rupiah(creditOwed), color = Credit, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+            }
         }
     }
 }

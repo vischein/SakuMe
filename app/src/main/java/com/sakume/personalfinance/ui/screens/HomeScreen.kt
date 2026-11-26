@@ -111,6 +111,8 @@ import com.sakume.personalfinance.data.BillEntity
 import com.sakume.personalfinance.data.DebtEntity
 import com.sakume.personalfinance.data.InvestmentEntity
 import com.sakume.personalfinance.data.TransactionEntity
+import com.sakume.personalfinance.data.accountTypeLabel
+import com.sakume.personalfinance.data.creditOwedTotal
 import com.sakume.personalfinance.ui.AppPrefs
 import com.sakume.personalfinance.ui.DUE_SOON_DAYS
 import com.sakume.personalfinance.ui.buildDisplayTransactions
@@ -131,11 +133,13 @@ import com.sakume.personalfinance.ui.startOfMonthMillis
 import com.sakume.personalfinance.ui.theme.CardBg
 import com.sakume.personalfinance.ui.theme.Green
 import com.sakume.personalfinance.ui.theme.Gold
+import com.sakume.personalfinance.ui.theme.GoldSoft
 import com.sakume.personalfinance.ui.theme.Accent
 import com.sakume.personalfinance.ui.theme.Ink
 import com.sakume.personalfinance.ui.theme.Muted
 import com.sakume.personalfinance.ui.theme.Panel
 import com.sakume.personalfinance.ui.theme.Red
+import com.sakume.personalfinance.ui.theme.Credit
 import com.sakume.personalfinance.ui.transactionAccountLabel
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -202,6 +206,7 @@ fun HomeScreen(
     fun money(value: Long): String = moneyText(hideBalance, value)
 
     val total = remember(accounts) { accounts.sumOf { it.balance } }
+    val creditOwed = remember(accounts) { accounts.creditOwedTotal() }
     val cashTotal = remember(accounts) { accounts.filter { isCashAccount(it) }.sumOf { it.balance } }
     val monthFlow = remember(tx) {
         val monthStart = startOfMonthMillis()
@@ -332,6 +337,7 @@ fun HomeScreen(
                 TopBlock(
                     topInset = topInset,
                     total = total,
+                    creditOwed = creditOwed,
                     moneyIn = monthFlow.income,
                     moneyOut = monthFlow.expense,
                     cashTotal = cashTotal,
@@ -614,6 +620,7 @@ private fun Context.findActivity(): Activity? {
 private fun TopBlock(
     topInset: Dp,
     total: Long,
+    creditOwed: Long = 0L,
     moneyIn: Long,
     moneyOut: Long,
     cashTotal: Long,
@@ -698,6 +705,21 @@ private fun TopBlock(
                 Text(
                     t,
                     color = if (net >= 0) Green else Red,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (creditOwed > 0L) {
+            Spacer(Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Termasuk kewajiban kredit", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, maxLines = 1)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (hidden) HIDDEN_MONEY else "-" + rupiah(creditOwed),
+                    color = Gold,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -979,7 +1001,7 @@ private fun AccountChip(
         Modifier
             .width(width)
             .pressable(
-                description = "Rekening ${a.name}, ${a.type}, saldo ${if (hidden) "disembunyikan" else rupiah(a.balance)}",
+                description = "Rekening ${a.name}, ${accountTypeLabel(a.type)}, ${if (a.isCredit) "terutang" else "saldo"} ${if (hidden) "disembunyikan" else rupiah(if (a.isCredit) a.owed else a.balance)}",
                 onClickLabel = "Buka riwayat ${a.name}",
                 onClick = onClick
             )
@@ -1002,8 +1024,8 @@ private fun AccountChip(
             }
             Spacer(Modifier.weight(1f))
             Text(
-                a.type,
-                color = Ink.copy(alpha = 0.7f),
+                accountTypeLabel(a.type),
+                color = if (a.isCredit) Credit else Ink.copy(alpha = 0.7f),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -1011,7 +1033,7 @@ private fun AccountChip(
                 modifier = Modifier
                     .widthIn(max = 90.dp)
                     .clip(CircleShape)
-                    .background(Ink.copy(alpha = 0.06f))
+                    .background(if (a.isCredit) GoldSoft else Ink.copy(alpha = 0.06f))
                     .padding(horizontal = 8.dp, vertical = 3.dp)
             )
         }
@@ -1025,7 +1047,17 @@ private fun AccountChip(
             overflow = TextOverflow.Ellipsis
         )
         Spacer(Modifier.height(2.dp))
-        MoneyText(hidden, a.balance, baseSize = 20f, minSize = 12f, color = Ink)
+        MoneyText(hidden, a.balance, baseSize = 20f, minSize = 12f, color = if (a.isCredit) Credit else Ink)
+        a.availableCredit?.let { left ->
+            Spacer(Modifier.height(2.dp))
+            Text(
+                if (hidden) "Sisa limit $HIDDEN_MONEY" else "Sisa limit ${rupiah(left)}",
+                color = Muted,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

@@ -24,15 +24,36 @@ class FinanceRepository(private val db: AppDatabase) {
     private fun rupiahText(v: Long): String =
         "Rp" + java.text.NumberFormat.getInstance(java.util.Locale("id", "ID")).format(v)
 
-    suspend fun addAccount(name: String, type: String, opening: Long) = db.withTransaction {
+    private fun requireCanHold(account: AccountEntity, newBalance: Long, regularMessage: String) {
+        require(account.canHold(newBalance)) {
+            if (account.isCredit) "Limit kredit ${account.name} tidak cukup" else regularMessage
+        }
+    }
+
+    suspend fun addAccount(
+        name: String,
+        type: String,
+        opening: Long,
+        creditLimit: Long? = null
+    ) = db.withTransaction {
         val cleanName = name.trim()
         require(cleanName.isNotBlank()) { "Nama rekening wajib diisi" }
         require(opening >= 0L) { "Saldo awal tidak boleh negatif" }
+        val credit = type.equals(ACCOUNT_TYPE_CREDIT, ignoreCase = true)
+        require(creditLimit == null || credit) { "Batas limit hanya untuk rekening Kredit/PayLater" }
+        require(creditLimit == null || creditLimit > 0L) { "Batas limit harus lebih dari nol" }
+        require(creditLimit == null || opening <= creditLimit) { "Nominal terutang awal melebihi batas limit" }
         require(dao.allAccounts().none { it.name.equals(cleanName, ignoreCase = true) }) {
             "Nama rekening sudah digunakan"
         }
         val order = dao.maxAccountSortOrder() + 1
-        dao.putAccount(AccountEntity(id(), cleanName, type, opening, openingBalance = opening, sortOrder = order))
+        val start = if (credit) -opening else opening
+        dao.putAccount(
+            AccountEntity(
+                id(), cleanName, if (credit) ACCOUNT_TYPE_CREDIT else type, start,
+                openingBalance = start, sortOrder = order, creditLimit = creditLimit
+            )
+        )
     }
     
     suspend fun renameAccount(accountId: String, newName: String) = db.withTransaction {
@@ -115,7 +136,7 @@ class FinanceRepository(private val db: AppDatabase) {
         requireCategoryFor(categoryId, type)
         require(date > 0L) { "Tanggal transaksi tidak valid" }
         val account = dao.account(accountId) ?: error("Rekening tidak ditemukan")
-        if (type == "expense") require(account.balance >= amount) { "Saldo rekening tidak cukup" }
+        if (type == "expense") requireCanHold(account, account.balance - amount, "Saldo rekening tidak cukup")
         dao.putAccount(account.copy(balance = account.balance + if (type == "income") amount else -amount))
         dao.putTransaction(
             TransactionEntity(id(), type, amount, "", accountId, date, note.trim(), categoryId = categoryId)
@@ -161,9 +182,13 @@ class FinanceRepository(private val db: AppDatabase) {
         balances[oldAccount.id] = oldAccount.balance - oldDelta
         balances[newAccount.id] = (balances[newAccount.id] ?: newAccount.balance) + newDelta
         balances.forEach { (id, balance) ->
-            require(balance >= 0L) {
-                val account = if (id == oldAccount.id) oldAccount else newAccount
-                "Perubahan ditolak: saldo ${account.name} tidak boleh negatif (hasil ${rupiahText(balance)})."
+            val account = if (id == oldAccount.id) oldAccount else newAccount
+            require(account.canHold(balance)) {
+                if (account.isCredit) {
+                    "Perubahan ditolak: limit kredit ${account.name} terlampaui (hasil ${rupiahText(balance)})."
+                } else {
+                    "Perubahan ditolak: saldo ${account.name} tidak boleh negatif (hasil ${rupiahText(balance)})."
+                }
             }
         }
         if (oldAccount.id == newAccount.id) {
@@ -215,11 +240,17 @@ class FinanceRepository(private val db: AppDatabase) {
                     "expense", "transfer_out" -> account.balance + item.amount
                     else -> account.balance
                 }
-                require(newBalance >= 0L) {
-                    "${if (item.type == "transfer_in") "Transfer masuk" else "Pemasukan"} ${rupiahText(item.amount)} " +
-                        "tidak bisa dihapus: saldo ${account.name} " +
-                        "hanya ${rupiahText(account.balance)} (uangnya sudah terpakai). " +
-                        "Hapus dulu transaksi pengeluaran setelahnya atau tambah saldo."
+                require(account.canHold(newBalance)) {
+                    val label = if (item.type == "transfer_in") "Transfer masuk" else "Pemasukan"
+                    if (account.isCredit) {
+                        "$label ${rupiahText(item.amount)} tidak bisa dihapus: limit kredit ${account.name} " +
+                            "akan terlampaui. Hapus dulu transaksi pengeluaran setelahnya atau bayar tagihan kreditnya."
+                    } else {
+                        "$label ${rupiahText(item.amount)} " +
+                            "tidak bisa dihapus: saldo ${account.name} " +
+                            "hanya ${rupiahText(account.balance)} (uangnya sudah terpakai). " +
+                            "Hapus dulu transaksi pengeluaran setelahnya atau tambah saldo."
+                    }
                 }
                 dao.putAccount(account.copy(balance = newBalance))
             }
@@ -295,7 +326,7 @@ class FinanceRepository(private val db: AppDatabase) {
         require(fromId != toId && amount > 0) { "Rekening atau nominal tidak valid" }
         val from = dao.account(fromId) ?: error("Rekening asal tidak ditemukan")
         val to = dao.account(toId) ?: error("Rekening tujuan tidak ditemukan")
-        require(from.balance >= amount) { "Saldo tidak cukup" }
+        requireCanHold(from, from.balance - amount, "Saldo tidak cukup")
         dao.putAccount(from.copy(balance = from.balance - amount))
         dao.putAccount(to.copy(balance = to.balance + amount))
         val group = id()
@@ -339,7 +370,7 @@ class FinanceRepository(private val db: AppDatabase) {
         val bill = dao.bill(billId) ?: error("Tagihan tidak ditemukan")
         require(!bill.isPaid) { "Tagihan sudah lunas" }
         val account = dao.account(accountId) ?: error("Rekening tidak ditemukan")
-        require(account.balance >= bill.amount) { "Saldo rekening tidak cukup" }
+        requireCanHold(account, account.balance - bill.amount, "Saldo rekening tidak cukup")
         val txId = id()
         val now = System.currentTimeMillis()
         dao.putAccount(account.copy(balance = account.balance - bill.amount))
@@ -365,7 +396,7 @@ class FinanceRepository(private val db: AppDatabase) {
         val unpaid = dao.allBills().filter { it.id in requestedIds && !it.isPaid }
         val total = unpaid.sumOf { it.amount }
         require(total > 0) { "Tidak ada tagihan aktif" }
-        require(account.balance >= total) { "Saldo rekening tidak cukup" }
+        requireCanHold(account, account.balance - total, "Saldo rekening tidak cukup")
         dao.putAccount(account.copy(balance = account.balance - total))
         val now = System.currentTimeMillis()
         unpaid.forEach {
@@ -483,7 +514,7 @@ class FinanceRepository(private val db: AppDatabase) {
         val asset = dao.allInvestments().firstOrNull { it.id == assetId && !it.archived }
             ?: error("Aset tidak ditemukan")
         val account = dao.account(accountId) ?: error("Rekening tidak ditemukan")
-        require(account.balance >= amount + adminFee) { "Saldo rekening tidak cukup" }
+        requireCanHold(account, account.balance - amount - adminFee, "Saldo rekening tidak cukup")
         val txId = id()
         val now = System.currentTimeMillis()
         dao.putAccount(account.copy(balance = account.balance - amount - adminFee))
@@ -680,7 +711,7 @@ class FinanceRepository(private val db: AppDatabase) {
                             it.id == current.assetId && !it.archived
                         } ?: error("Aset tidak ditemukan")
                         val account = dao.account(current.accountId) ?: error("Rekening tidak ditemukan")
-                        require(account.balance >= current.amount) { "Saldo rekening tidak cukup" }
+                        requireCanHold(account, account.balance - current.amount, "Saldo rekening tidak cukup")
                         val txId = id()
                         dao.putAccount(account.copy(balance = account.balance - current.amount))
                         dao.putInvestment(currentAsset.copy(value = currentAsset.value + current.amount))
@@ -962,7 +993,7 @@ class FinanceRepository(private val db: AppDatabase) {
         }
         val note = if (debt.description.isBlank()) label else "$label · ${debt.description}"
         if (isUtang) {
-            require(account.balance >= amount) { "Saldo rekening tidak cukup" }
+            requireCanHold(account, account.balance - amount, "Saldo rekening tidak cukup")
             dao.putAccount(account.copy(balance = account.balance - amount))
         } else {
             dao.putAccount(account.copy(balance = account.balance + amount))
@@ -1091,7 +1122,7 @@ class FinanceRepository(private val db: AppDatabase) {
     suspend fun importDecoded(decoded: BackupData): BackupData = importJsonDecoded(decoded)
 
     private suspend fun importJsonDecoded(decoded: BackupData): BackupData = db.withTransaction {
-        val data = normalizeBills(normalizeDebts(CategoryBackfill.apply(decoded)))
+        val data = normalizeBills(normalizeDebts(normalizeAccounts(CategoryBackfill.apply(decoded))))
         validateBackup(data)
         dao.clearAccounts()
         dao.clearTransactions()
@@ -1115,6 +1146,16 @@ class FinanceRepository(private val db: AppDatabase) {
         dao.putSalaries(data.salaries)
         data
     }
+    private fun normalizeAccounts(data: BackupData): BackupData = data.copy(
+        accounts = data.accounts.map { a ->
+            when {
+                a.isCredit && a.type != ACCOUNT_TYPE_CREDIT -> a.copy(type = ACCOUNT_TYPE_CREDIT)
+                !a.isCredit && a.creditLimit != null -> a.copy(creditLimit = null)
+                else -> a
+            }
+        }
+    )
+
     private fun normalizeDebts(data: BackupData): BackupData {
         val txs = data.transactions.toMutableList()
         val debts = data.debts.map { d ->
@@ -1182,6 +1223,10 @@ class FinanceRepository(private val db: AppDatabase) {
         require(transactionIds.size == data.transactions.size) { "Backup memiliki ID transaksi duplikat" }
         
         require(data.accounts.all { it.name.isNotBlank() }) { "Backup memiliki rekening tidak valid" }
+        require(data.accounts.all { a ->
+            val limit = a.creditLimit
+            limit == null || (a.isCredit && limit > 0L)
+        }) { "Backup memiliki batas limit kredit yang tidak valid" }
         require(data.transactions.all {
             it.amount > 0L && it.type in setOf("income", "expense", "transfer_in", "transfer_out") &&
                 it.accountId in accountIds && it.dateMillis > 0L
